@@ -66,12 +66,12 @@ export default function UnlockMethodsPage({ params }: PageProps) {
           </div>
         </div>
 
-        <Link href={`/dashboard/${deviceId}/unlock-methods/remote-settings`}>
+        {/* <Link href={`/dashboard/${deviceId}/unlock-methods/remote-settings`}>
           <Button variant="outline" className="gap-2">
             <Radio className="h-4 w-4" />
             Remote Settings
           </Button>
-        </Link>
+        </Link> */}
       </div>
 
       {/* Info Banner */}

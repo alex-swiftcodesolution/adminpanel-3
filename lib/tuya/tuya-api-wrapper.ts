@@ -180,7 +180,7 @@ export interface Album {
 
 // Remote Unlock Types
 export interface RemoteUnlockMethod {
-  remote_unlock_type: string; // "remoteUnlockWithoutPwd" | "remoteUnlockWithPwd"
+  remote_unlock_type: "remoteUnlockWithoutPwd" | "remoteUnlockWithPwd";
   open: boolean;
   device_id: string;
 }
@@ -1074,11 +1074,14 @@ export class UnlockMethodAPI {
 export class DoorControlAPI {
   /**
    * Unlock door with password
+   * Note: Password must be AES encrypted using ticket_key
    */
   static async unlockWithPassword(
     deviceId: string,
     data: {
-      password: string;
+      password: string; // AES encrypted password
+      password_type: "ticket";
+      ticket_id: string;
     }
   ): Promise<boolean> {
     return tuyaRequest({
@@ -1090,47 +1093,47 @@ export class DoorControlAPI {
 
   /**
    * Unlock door without password
+   * Requires ticket_id from getPasswordTicket()
    */
-  static async unlockWithoutPassword(deviceId: string): Promise<boolean> {
-    return tuyaRequest({
-      method: "POST",
-      path: `/v1.0/devices/${deviceId}/door-lock/password-free/open-door`,
-    });
-  }
-
-  /**
-   * Unlock door without password v1.1 (can specify channel)
-   */
-  static async unlockWithoutPasswordV11(
+  static async unlockWithoutPassword(
     deviceId: string,
-    data?: {
-      channel?: number;
+    data: {
+      ticket_id: string;
     }
   ): Promise<boolean> {
     return tuyaRequest({
       method: "POST",
-      path: `/v1.1/devices/${deviceId}/door-lock/password-free/open-door`,
-      body: data || {},
+      path: `/v1.0/devices/${deviceId}/door-lock/password-free/open-door`,
+      body: data,
     });
   }
 
   /**
    * Revoke password-free unlocking
+   * @param type - 1: owner rejects, 2: initiator cancels
    */
-  static async revokePasswordFreeUnlock(deviceId: string): Promise<boolean> {
+  static async revokePasswordFreeUnlock(
+    deviceId: string,
+    data: {
+      type: 1 | 2;
+    }
+  ): Promise<boolean> {
     return tuyaRequest({
       method: "PUT",
       path: `/v1.0/devices/${deviceId}/door-lock/password-free/open-door/cancel`,
+      body: data,
     });
   }
 
   /**
    * Remote lock/unlock without password
+   * @param open - true: unlock (default), false: lock
    */
   static async remoteDoorOperate(
     deviceId: string,
     data: {
-      operate: "lock" | "unlock";
+      ticket_id: string;
+      open?: boolean;
     }
   ): Promise<boolean> {
     return tuyaRequest({
@@ -1146,10 +1149,19 @@ export class DoorControlAPI {
   static async getRemoteUnlockMethods(
     deviceId: string
   ): Promise<RemoteUnlockMethod[]> {
-    return tuyaRequest({
+    const result = await tuyaRequest({
       method: "GET",
       path: `/v1.0/devices/${deviceId}/door-lock/remote-unlocks`,
     });
+
+    // API may return single object or array
+    if (Array.isArray(result)) {
+      return result;
+    }
+    if (result && typeof result === "object") {
+      return [result as RemoteUnlockMethod];
+    }
+    return [];
   }
 
   /**
@@ -1158,8 +1170,9 @@ export class DoorControlAPI {
   static async configureRemoteUnlock(
     deviceId: string,
     data: {
-      unlock_type: number;
-      is_enabled: boolean;
+      remote_unlock_type: "remoteUnlockWithoutPwd" | "remoteUnlockWithPwd";
+      open: boolean;
+      device_id?: string;
     }
   ): Promise<boolean> {
     return tuyaRequest({
