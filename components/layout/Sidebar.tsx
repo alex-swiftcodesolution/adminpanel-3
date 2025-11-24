@@ -77,13 +77,7 @@ export default function Sidebar({ deviceId }: SidebarProps) {
       color: "text-orange-600",
       bgColor: "bg-orange-100",
     },
-    {
-      name: "Security",
-      href: `/dashboard/${deviceId}/security`,
-      icon: Shield,
-      color: "text-red-600",
-      bgColor: "bg-red-100",
-    },
+
     {
       name: "Device Info",
       href: `/dashboard/${deviceId}/device-info`,
