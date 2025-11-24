@@ -3,6 +3,7 @@
 
 import { extractArray } from "../utils/array-helpers";
 import { tuyaRequest } from "./tuya-connector";
+export { MEDIA_EVENT_TYPES } from "./constants";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -241,17 +242,33 @@ export interface CombinedRecord {
 }
 
 // Media Types
-export interface MediaInfo {
-  url: string;
-  type: "image" | "video";
-  time: number;
+export interface MediaUrlResponse {
+  file_url?: string;
+  file_key?: string;
+  bucket?: string;
+  file_path?: string;
+  media_url?: string;
+  media_key?: string;
+  media_path?: string;
+  media_bucket?: string;
 }
 
-export interface Album {
-  album_id: string;
-  device_id: string;
-  media_list: MediaInfo[];
-  time: number;
+export interface AlbumItem {
+  file_url: string;
+  file_key?: string;
+  file_id?: number;
+  media_url?: string;
+  media_key?: string;
+  media_path?: string;
+  media_bucket?: string;
+  event_type: number;
+  upload_time: number;
+}
+
+export interface AlbumsResponse {
+  album_list: AlbumItem[];
+  event_types: number[];
+  order_code?: string;
 }
 
 // Remote Unlock Types
@@ -1460,17 +1477,54 @@ export class HistoryAPI {
 
 export class MediaAPI {
   /**
-   * Get cover image of last remote unlock or alert
+   * Get latest remote unlock or alarm cover image
+   * @param fileType - 1: Remote door opening, 2: Alarm
    */
-  static async getLatestMediaUrl(deviceId: string): Promise<MediaInfo> {
+  static async getLatestMediaUrl(
+    deviceId: string,
+    fileType: 1 | 2 = 2
+  ): Promise<MediaUrlResponse> {
     return tuyaRequest({
       method: "GET",
       path: `/v1.0/devices/${deviceId}/door-lock/latest/media/url`,
+      query: { file_type: fileType },
     });
   }
 
   /**
-   * Get list of albums
+   * Get real-time signed URL for specific media
+   * Use this when media_infos has partial URLs
+   */
+  static async getMediaUrl(
+    deviceId: string,
+    params: {
+      bucket: string;
+      file_path: string;
+      media_bucket?: string;
+      media_path?: string;
+    }
+  ): Promise<MediaUrlResponse> {
+    const queryParams: Record<string, string> = {
+      bucket: params.bucket,
+      file_path: params.file_path,
+    };
+
+    if (params.media_bucket) {
+      queryParams.media_bucket = params.media_bucket;
+    }
+    if (params.media_path) {
+      queryParams.media_path = params.media_path;
+    }
+
+    return tuyaRequest({
+      method: "GET",
+      path: `/v1.0/devices/${deviceId}/door-lock/media/url`,
+      query: queryParams,
+    });
+  }
+
+  /**
+   * Get list of albums (images and videos)
    */
   static async getAlbums(
     deviceId: string,
@@ -1479,14 +1533,21 @@ export class MediaAPI {
       end_time?: number;
       page_size?: number;
     }
-  ): Promise<Album[]> {
+  ): Promise<AlbumsResponse> {
     const queryString = params
       ? `?${new URLSearchParams(params as any).toString()}`
       : "";
-    return tuyaRequest({
+
+    const result = await tuyaRequest({
       method: "GET",
       path: `/v1.0/smart-lock/devices/${deviceId}/albums-media${queryString}`,
     });
+
+    return {
+      album_list: result?.album_list || [],
+      event_types: result?.event_types || [],
+      order_code: result?.order_code,
+    };
   }
 
   /**

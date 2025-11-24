@@ -23,13 +23,12 @@ export async function GET(request: NextRequest) {
     const params = {
       page_no: pageNo ? parseInt(pageNo) : 1,
       page_size: pageSize ? parseInt(pageSize) : 20,
-      codes: codes || "alarm_lock,hijack,doorbell", // All alarm types
+      codes: codes || "alarm_lock,hijack,doorbell",
       show_media_info: showMediaInfo !== "false",
     };
 
     console.log("🚨 Fetching alarm logs with params:", params);
 
-    // Use v1.1 for media info support
     const result = await TuyaSmartLockAPI.History.getAlarmLogsV11(
       deviceId,
       params
@@ -37,6 +36,12 @@ export async function GET(request: NextRequest) {
 
     console.log(
       `✅ Retrieved ${result.records.length} alarm records (total: ${result.total})`
+    );
+
+    // Debug log - remove after testing
+    console.log(
+      "📋 Alarm records detail:",
+      JSON.stringify(result.records, null, 2)
     );
 
     return NextResponse.json({

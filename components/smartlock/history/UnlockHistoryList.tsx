@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { UnlockLogItem } from "@/lib/tuya/tuya-api-wrapper";
+import { UnlockLogItem, MediaInfoItem } from "@/lib/tuya/tuya-api-wrapper";
 import {
   Clock,
   User,
@@ -19,9 +19,8 @@ import {
   Smartphone,
   Eye,
   KeyRound,
-  Link as LinkIcon,
 } from "lucide-react";
-import LinkUserModal from "./LinkUserModal";
+import MediaPreviewModal from "./MediaPreviewModal";
 
 interface UnlockHistoryListProps {
   deviceId: string;
@@ -35,7 +34,6 @@ interface PaginatedResponse {
   has_more: boolean;
 }
 
-// Map unlock codes to display names and icons
 const UNLOCK_TYPE_MAP: Record<string, { name: string; icon: React.ReactNode }> =
   {
     unlock_fingerprint: {
@@ -83,17 +81,14 @@ export default function UnlockHistoryList({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [dateRange, setDateRange] = useState({
-    start: "",
-    end: "",
-  });
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
 
-  // Link User Modal State
-  const [linkModalOpen, setLinkModalOpen] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<{
-    id: string;
-    userId?: string;
-    userName?: string;
+  // Media Modal State
+  const [mediaModalOpen, setMediaModalOpen] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<{
+    mediaInfos: MediaInfoItem[];
+    timestamp?: number;
+    title?: string;
   } | null>(null);
 
   const fetchRecords = useCallback(
@@ -109,15 +104,16 @@ export default function UnlockHistoryList({
         });
 
         if (dateRange.start) {
-          const startTime = Math.floor(
-            new Date(dateRange.start).getTime() / 1000
+          params.append(
+            "startTime",
+            String(Math.floor(new Date(dateRange.start).getTime() / 1000))
           );
-          params.append("startTime", String(startTime));
         }
-
         if (dateRange.end) {
-          const endTime = Math.floor(new Date(dateRange.end).getTime() / 1000);
-          params.append("endTime", String(endTime));
+          params.append(
+            "endTime",
+            String(Math.floor(new Date(dateRange.end).getTime() / 1000))
+          );
         }
 
         const response = await fetch(
@@ -155,15 +151,14 @@ export default function UnlockHistoryList({
     );
   };
 
-  const handleOpenLinkModal = (record: UnlockLogItem, index: number) => {
-    // Generate a unique record ID
-    const recordId = `${record.update_time}-${index}`;
-    setSelectedRecord({
-      id: recordId,
-      userId: record.user_id,
-      userName: record.nick_name,
+  const handleOpenMediaModal = (record: UnlockLogItem) => {
+    const unlockInfo = getUnlockInfo(record.status.code);
+    setSelectedMedia({
+      mediaInfos: record.media_infos || [],
+      timestamp: record.update_time,
+      title: `${unlockInfo.name} - Media`,
     });
-    setLinkModalOpen(true);
+    setMediaModalOpen(true);
   };
 
   const totalPages = Math.ceil(data.total / data.page_size);
@@ -208,7 +203,7 @@ export default function UnlockHistoryList({
         </div>
       </div>
 
-      {/* Error Message */}
+      {/* Error */}
       {error && (
         <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
           <div className="flex items-center gap-2 text-yellow-800">
@@ -221,7 +216,7 @@ export default function UnlockHistoryList({
         </div>
       )}
 
-      {/* Loading State */}
+      {/* Loading */}
       {loading && (
         <div className="flex justify-center items-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -254,7 +249,7 @@ export default function UnlockHistoryList({
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
                         {unlockInfo.icon}
                       </span>
@@ -264,6 +259,11 @@ export default function UnlockHistoryList({
                       <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
                         {unlockInfo.name}
                       </span>
+                      {hasMedia && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
+                          📷 {record.media_infos!.length} media
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1 text-sm text-gray-600">
@@ -272,20 +272,12 @@ export default function UnlockHistoryList({
                         <span>{formatDate(record.update_time)}</span>
                       </div>
 
-                      {/* {record.nick_name ? (
+                      {record.nick_name && (
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4" />
                           <span>{record.nick_name}</span>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => handleOpenLinkModal(record, index)}
-                          className="flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline"
-                        >
-                          <LinkIcon className="w-4 h-4" />
-                          <span>Link to user</span>
-                        </button>
-                      )} */}
+                      )}
 
                       {record.status.value && (
                         <div className="flex items-center gap-2 text-gray-400">
@@ -296,34 +288,16 @@ export default function UnlockHistoryList({
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="ml-4 flex flex-col gap-2 items-end">
-                    {/* Media Preview */}
-                    {hasMedia && (
-                      <div className="flex gap-2">
-                        {record.media_infos!.slice(0, 2).map((media, i) => (
-                          <a
-                            key={i}
-                            href={media.file_url || media.media_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm"
-                          >
-                            <ImageIcon className="w-4 h-4" />
-                            {media.media_url ? "Video" : "Image"}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Link User Button (if already has user) */}
-                    {record.nick_name && (
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        <span>{record.nick_name}</span>
-                      </div>
-                    )}
-                  </div>
+                  {/* Media Button */}
+                  {hasMedia && (
+                    <button
+                      onClick={() => handleOpenMediaModal(record)}
+                      className="ml-4 flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      View Media
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -364,19 +338,17 @@ export default function UnlockHistoryList({
         </div>
       )}
 
-      {/* Link User Modal */}
-      <LinkUserModal
-        isOpen={linkModalOpen}
+      {/* Media Preview Modal */}
+      <MediaPreviewModal
+        isOpen={mediaModalOpen}
         onClose={() => {
-          setLinkModalOpen(false);
-          setSelectedRecord(null);
+          setMediaModalOpen(false);
+          setSelectedMedia(null);
         }}
         deviceId={deviceId}
-        recordId={selectedRecord?.id || ""}
-        recordType="unlock"
-        currentUserId={selectedRecord?.userId}
-        currentUserName={selectedRecord?.userName}
-        onSuccess={() => fetchRecords(data.page_no)}
+        mediaInfos={selectedMedia?.mediaInfos || []}
+        timestamp={selectedMedia?.timestamp}
+        title={selectedMedia?.title}
       />
     </div>
   );

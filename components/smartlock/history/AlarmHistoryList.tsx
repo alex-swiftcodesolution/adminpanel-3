@@ -3,8 +3,9 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { AlarmLogItem } from "@/lib/tuya/tuya-api-wrapper";
+import { useState, useEffect, useRef } from "react";
+import { AlarmLogItem, MediaInfoItem } from "@/lib/tuya/tuya-api-wrapper";
+import { ALARM_TYPE_MAP, ALARM_VALUE_MAP } from "@/lib/tuya/constants";
 import {
   AlertTriangle,
   Clock,
@@ -16,9 +17,8 @@ import {
   Bell,
   ShieldAlert,
   User,
-  Link as LinkIcon,
 } from "lucide-react";
-import LinkUserModal from "./LinkUserModal";
+import MediaPreviewModal from "./MediaPreviewModal";
 
 interface AlarmHistoryListProps {
   deviceId: string;
@@ -32,39 +32,10 @@ interface PaginatedResponse {
   has_more: boolean;
 }
 
-// Map alarm codes to display info
-const ALARM_TYPE_MAP: Record<
-  string,
-  { name: string; severity: "high" | "medium" | "low"; icon: React.ReactNode }
-> = {
-  hijack: {
-    name: "Duress Alarm",
-    severity: "high",
-    icon: <ShieldAlert className="w-5 h-5" />,
-  },
-  alarm_lock: {
-    name: "Lock Alarm",
-    severity: "medium",
-    icon: <AlertTriangle className="w-5 h-5" />,
-  },
-  doorbell: {
-    name: "Doorbell",
-    severity: "low",
-    icon: <Bell className="w-5 h-5" />,
-  },
-};
-
-// Map alarm values to messages
-const ALARM_VALUE_MAP: Record<string, string> = {
-  wrong_finger: "Wrong fingerprint attempt",
-  wrong_password: "Wrong password attempt",
-  wrong_card: "Wrong card attempt",
-  wrong_face: "Wrong face attempt",
-  low_battery: "Low battery warning",
-  door_unclosed: "Door not closed properly",
-  multiple_fail: "Multiple unlock failures",
-  forced_lock: "Forced lock attempt",
-  pry: "Pry attempt detected",
+const ALARM_ICONS: Record<string, React.ReactNode> = {
+  hijack: <ShieldAlert className="w-5 h-5" />,
+  alarm_lock: <AlertTriangle className="w-5 h-5" />,
+  doorbell: <Bell className="w-5 h-5" />,
 };
 
 export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
@@ -79,63 +50,69 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
   const [error, setError] = useState("");
   const [alarmFilter, setAlarmFilter] = useState<string>("all");
 
-  // Link User Modal State
-  const [linkModalOpen, setLinkModalOpen] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<{
-    id: string;
-    userName?: string;
+  // Media Modal State
+  const [mediaModalOpen, setMediaModalOpen] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<{
+    mediaInfos: MediaInfoItem[];
+    timestamp?: number;
+    title?: string;
   } | null>(null);
 
-  const fetchRecords = useCallback(
-    async (pageNo: number = 1) => {
-      try {
-        setLoading(true);
-        setError("");
+  // Track previous filter to detect changes
+  const prevFilterRef = useRef<string>(alarmFilter);
+  const isFirstRender = useRef(true);
 
-        const params = new URLSearchParams({
-          deviceId,
-          pageNo: String(pageNo),
-          pageSize: "20",
-        });
+  const fetchRecords = async (
+    pageNo: number = 1,
+    filter: string = alarmFilter
+  ) => {
+    try {
+      setLoading(true);
+      setError("");
 
-        if (alarmFilter !== "all") {
-          params.append("codes", alarmFilter);
-        } else {
-          params.append("codes", "alarm_lock,hijack,doorbell");
-        }
+      const params = new URLSearchParams({
+        deviceId,
+        pageNo: String(pageNo),
+        pageSize: "20",
+      });
 
-        const response = await fetch(
-          `/api/smartlock/history/alarms?${params.toString()}`
-        );
-        const result = await response.json();
-
-        if (result.success) {
-          setData(result.data);
-        } else {
-          setError(result.error || "Failed to fetch records");
-        }
-      } catch (err: any) {
-        console.error("Error fetching alarm history:", err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      if (filter !== "all") {
+        params.append("codes", filter);
+      } else {
+        params.append("codes", "alarm_lock,hijack,doorbell");
       }
-    },
-    [deviceId, alarmFilter]
-  );
 
-  const hasFetched = useRef(false);
+      const response = await fetch(
+        `/api/smartlock/history/alarms?${params.toString()}`
+      );
+      const result = await response.json();
 
+      if (result.success) {
+        setData(result.data);
+      } else {
+        setError(result.error || "Failed to fetch records");
+      }
+    } catch (err: any) {
+      console.error("Error fetching alarm history:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial fetch only
   useEffect(() => {
-    if (!hasFetched.current) {
-      hasFetched.current = true;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
       fetchRecords(1);
     }
-  }, []);
+  }, [deviceId]);
 
+  // Handle filter changes
   useEffect(() => {
-    if (hasFetched.current) {
-      fetchRecords(1);
+    if (prevFilterRef.current !== alarmFilter && !isFirstRender.current) {
+      prevFilterRef.current = alarmFilter;
+      fetchRecords(1, alarmFilter);
     }
   }, [alarmFilter]);
 
@@ -145,13 +122,12 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
   };
 
   const getAlarmInfo = (code: string) => {
-    return (
-      ALARM_TYPE_MAP[code] || {
-        name: code,
-        severity: "medium" as const,
-        icon: <AlertTriangle className="w-5 h-5" />,
-      }
-    );
+    const info = ALARM_TYPE_MAP[code];
+    return {
+      name: info?.name || code,
+      severity: info?.severity || ("medium" as const),
+      icon: ALARM_ICONS[code] || <AlertTriangle className="w-5 h-5" />,
+    };
   };
 
   const getAlarmMessage = (value: string | object) => {
@@ -161,13 +137,16 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
     return JSON.stringify(value);
   };
 
-  const handleOpenLinkModal = (record: AlarmLogItem, index: number) => {
-    const recordId = `${record.update_time}-${index}`;
-    setSelectedRecord({
-      id: recordId,
-      userName: record.nick_name,
+  const handleOpenMediaModal = (record: AlarmLogItem) => {
+    const statusItem = Array.isArray(record.status)
+      ? record.status[0]
+      : record.status;
+    setSelectedMedia({
+      mediaInfos: record.media_infos || [],
+      timestamp: record.update_time,
+      title: `${getAlarmInfo(statusItem?.code || "alarm_lock").name} - Media`,
     });
-    setLinkModalOpen(true);
+    setMediaModalOpen(true);
   };
 
   const severityColors = {
@@ -208,7 +187,7 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
           </select>
 
           <button
-            onClick={() => fetchRecords(1)}
+            onClick={() => fetchRecords(data.page_no)}
             disabled={loading}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
             title="Refresh"
@@ -218,7 +197,7 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
         </div>
       </div>
 
-      {/* Error Message */}
+      {/* Error */}
       {error && (
         <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
           <div className="flex items-center gap-2 text-yellow-800">
@@ -231,7 +210,7 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
         </div>
       )}
 
-      {/* Loading State */}
+      {/* Loading */}
       {loading && (
         <div className="flex justify-center items-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
@@ -269,7 +248,7 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span
                         className={`p-1.5 rounded-lg ${
                           severityBadgeColors[alarmInfo.severity]
@@ -285,6 +264,11 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
                       >
                         {alarmInfo.severity.toUpperCase()}
                       </span>
+                      {hasMedia && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
+                          📷 {record.media_infos!.length} media
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1 text-sm">
@@ -300,51 +284,25 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
                         </div>
                       )}
 
-                      {/* {record.nick_name ? (
+                      {record.nick_name && (
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4" />
                           <span>{record.nick_name}</span>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => handleOpenLinkModal(record, index)}
-                          className="flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline"
-                        >
-                          <LinkIcon className="w-4 h-4" />
-                          <span>Link to user</span>
-                        </button>
-                      )} */}
+                      )}
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="ml-4 flex flex-col gap-2 items-end">
-                    {/* Media Preview */}
-                    {hasMedia && (
-                      <div className="flex gap-2">
-                        {record.media_infos!.slice(0, 2).map((media, i) => (
-                          <a
-                            key={i}
-                            href={media.file_url || media.media_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm"
-                          >
-                            <ImageIcon className="w-4 h-4" />
-                            {media.media_url ? "Video" : "Image"}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Link User Button (if already has user) */}
-                    {record.nick_name && (
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        <span>{record.nick_name}</span>
-                      </div>
-                    )}
-                  </div>
+                  {/* Media Button */}
+                  {hasMedia && (
+                    <button
+                      onClick={() => handleOpenMediaModal(record)}
+                      className="ml-4 flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      View Media
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -385,18 +343,17 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
         </div>
       )}
 
-      {/* Link User Modal */}
-      <LinkUserModal
-        isOpen={linkModalOpen}
+      {/* Media Preview Modal */}
+      <MediaPreviewModal
+        isOpen={mediaModalOpen}
         onClose={() => {
-          setLinkModalOpen(false);
-          setSelectedRecord(null);
+          setMediaModalOpen(false);
+          setSelectedMedia(null);
         }}
         deviceId={deviceId}
-        recordId={selectedRecord?.id || ""}
-        recordType="alarm"
-        currentUserName={selectedRecord?.userName}
-        onSuccess={() => fetchRecords(data.page_no)}
+        mediaInfos={selectedMedia?.mediaInfos || []}
+        timestamp={selectedMedia?.timestamp}
+        title={selectedMedia?.title}
       />
     </div>
   );

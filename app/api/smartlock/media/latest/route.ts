@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/smartlock/media/latest/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
@@ -6,6 +7,7 @@ import { TuyaSmartLockAPI } from "@/lib/tuya/tuya-api-wrapper";
 export async function GET(request: NextRequest) {
   try {
     const deviceId = request.nextUrl.searchParams.get("deviceId");
+    const fileType = request.nextUrl.searchParams.get("fileType");
 
     if (!deviceId) {
       return NextResponse.json(
@@ -14,12 +16,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const media = await TuyaSmartLockAPI.Media.getLatestMediaUrl(deviceId);
+    // fileType: 1 = Remote door opening, 2 = Alarm (default)
+    const type = fileType === "1" ? 1 : 2;
+
+    console.log(
+      "📸 Fetching latest media for device:",
+      deviceId,
+      "type:",
+      type
+    );
+
+    const media = await TuyaSmartLockAPI.Media.getLatestMediaUrl(
+      deviceId,
+      type as 1 | 2
+    );
+
+    console.log("✅ Latest media:", media);
 
     return NextResponse.json({ success: true, data: media });
   } catch (error: any) {
-    console.error("Error fetching latest media:", error);
-    // Return empty response instead of error for unsupported features
+    console.error("❌ Error fetching latest media:", error);
     return NextResponse.json(
       {
         success: false,
