@@ -830,7 +830,7 @@ export class UnlockMethodAPI {
     });
 
     // Response format: { unlock_keys: [...] }
-    return extractArray<UnlockKey>(result, "unlock_keys");
+    return extractArray<UnlockKey>(result);
   }
 
   /**
@@ -856,7 +856,7 @@ export class UnlockMethodAPI {
     });
 
     // Response format: { unlock_keys: [...] }
-    return extractArray<UnlockKey>(result, "unlock_keys");
+    return extractArray<UnlockKey>(result);
   }
 
   /**
@@ -1241,7 +1241,7 @@ export class HistoryAPI {
       return extractArray<AlarmRecord>(result);
     } catch (error: any) {
       // Alarm logs might not be supported - return empty array
-      console.warn("Alarm logs not available for this device");
+      console.warn(error, "Alarm logs not available for this device");
       return [];
     }
   }
@@ -1276,7 +1276,7 @@ export class HistoryAPI {
 
       return extractArray<AlarmRecord>(result);
     } catch (error: any) {
-      console.warn("Alarm logs not available for this device");
+      console.warn(error, "Alarm logs not available for this device");
       return [];
     }
   }

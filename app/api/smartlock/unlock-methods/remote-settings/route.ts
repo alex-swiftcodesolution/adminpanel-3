@@ -43,12 +43,12 @@ export async function GET(request: NextRequest) {
 // POST - Update remote unlock setting
 export async function POST(request: NextRequest) {
   try {
-    const { deviceId, remoteUnlockType, open } = await request.json();
+    const { deviceId, unlock_type, is_enabled } = await request.json();
 
-    if (!deviceId || !remoteUnlockType || open === undefined) {
+    if (!deviceId || unlock_type === undefined || is_enabled === undefined) {
       return NextResponse.json(
         {
-          error: "Missing required fields: deviceId, remoteUnlockType, open",
+          error: "Missing required fields: deviceId, unlock_type, is_enabled",
         },
         { status: 400 }
       );
@@ -56,15 +56,15 @@ export async function POST(request: NextRequest) {
 
     console.log("⚙️ Updating remote unlock setting:", {
       deviceId,
-      remoteUnlockType,
-      open,
+      unlock_type,
+      is_enabled,
     });
 
     const result = await TuyaSmartLockAPI.DoorControl.configureRemoteUnlock(
       deviceId,
       {
-        remote_unlock_type: remoteUnlockType,
-        open,
+        unlock_type,
+        is_enabled,
       }
     );
 
