@@ -167,7 +167,7 @@ export default function MediaPreviewModal({
       {/* Modal */}
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
               {title || "Media Preview"}
@@ -280,12 +280,12 @@ export default function MediaPreviewModal({
 
         {/* Thumbnails (if multiple) */}
         {hasMultiple && resolvedUrls.length > 0 && !loading && (
-          <div className="flex items-center gap-2 p-3 border-t border-gray-200 overflow-x-auto bg-gray-50 flex-shrink-0">
+          <div className="flex items-center gap-2 p-3 border-t border-gray-200 overflow-x-auto bg-gray-50 shrink-0">
             {resolvedUrls.map((media, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentIndex(index)}
-                className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
                   index === currentIndex
                     ? "border-blue-500 ring-2 ring-blue-200"
                     : "border-gray-200 hover:border-gray-400"
@@ -316,7 +316,7 @@ export default function MediaPreviewModal({
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-white flex-shrink-0">
+        <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-white shrink-0">
           <div className="flex items-center gap-3 text-sm text-gray-500">
             {hasImage && (
               <span className="flex items-center gap-1">

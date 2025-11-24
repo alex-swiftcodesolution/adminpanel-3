@@ -175,7 +175,7 @@ export default function LinkUserModal({
           {/* Error */}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
@@ -183,7 +183,7 @@ export default function LinkUserModal({
           {/* Success */}
           {success && (
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700 text-sm">
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <CheckCircle className="w-4 h-4 shrink-0" />
               <span>{success}</span>
             </div>
           )}
