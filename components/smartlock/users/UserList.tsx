@@ -13,19 +13,17 @@ import {
   Edit,
   Trash2,
   User,
-  Shield,
   RefreshCw,
-  Filter,
   Info,
-  Clock,
   Users as UsersIcon,
+  Key,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import UserScheduleModal from "./UserScheduleModal";
+import { useRouter } from "next/navigation";
 
 interface DeviceUser {
   user_id: string;
@@ -47,19 +45,13 @@ export interface UserListHandle {
   refresh: () => void;
 }
 
-export interface UserListHandle {
-  refresh: () => void;
-}
-
 const UserList = forwardRef<UserListHandle, UserListProps>(
   ({ deviceId, onEdit }, ref) => {
+    const router = useRouter();
     const [users, setUsers] = useState<DeviceUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
     const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
-    const [schedulingUser, setSchedulingUser] = useState<DeviceUser | null>(
-      null
-    );
 
     const fetchUsers = useCallback(async () => {
       try {
@@ -85,7 +77,6 @@ const UserList = forwardRef<UserListHandle, UserListProps>(
       fetchUsers();
     }, [fetchUsers]);
 
-    // ✅ Expose refresh method
     useImperativeHandle(
       ref,
       () => ({
@@ -120,10 +111,8 @@ const UserList = forwardRef<UserListHandle, UserListProps>(
         if (data.success) {
           console.log("✅ User deleted successfully");
 
-          // Remove from local state immediately
           setUsers((prev) => prev.filter((u) => u.user_id !== userId));
 
-          // Refresh after delay
           setTimeout(() => {
             console.log("🔄 Refreshing user list...");
             fetchUsers();
@@ -187,7 +176,6 @@ const UserList = forwardRef<UserListHandle, UserListProps>(
       );
     }
 
-    // Filter out deleting users
     const visibleUsers = users.filter((u) => !deletingIds.has(u.user_id));
 
     return (
@@ -313,6 +301,21 @@ const UserList = forwardRef<UserListHandle, UserListProps>(
                     {/* Actions */}
                     <div className="flex gap-2">
                       <Button
+                        onClick={() =>
+                          router.push(
+                            `/dashboard/${deviceId}/users/${user.user_id}/unlock-methods`
+                          )
+                        }
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8 text-xs border-neutral-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200"
+                        disabled={isDeleting}
+                      >
+                        <Key className="mr-2 h-3 w-3" />
+                        Methods
+                      </Button>
+
+                      <Button
                         onClick={() => onEdit?.(user)}
                         variant="outline"
                         size="sm"
@@ -322,17 +325,6 @@ const UserList = forwardRef<UserListHandle, UserListProps>(
                         <Edit className="mr-2 h-3 w-3" />
                         Edit
                       </Button>
-
-                      {/* <Button
-                        onClick={() => setSchedulingUser(user)}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-8 text-xs border-neutral-200 hover:bg-neutral-50"
-                        disabled={isDeleting}
-                      >
-                        <Clock className="mr-2 h-3 w-3" />
-                        Schedule
-                      </Button> */}
 
                       <Button
                         onClick={() =>
@@ -364,24 +356,12 @@ const UserList = forwardRef<UserListHandle, UserListProps>(
               </p>
               <p className="text-xs text-neutral-600 mt-1">
                 Users must enroll their unlock methods (fingerprint, card,
-                password, etc.) directly on the lock device. This interface only
-                manages user profiles.
+                password, etc.) directly on the lock device. This interface
+                manages user profiles and their assigned unlock methods.
               </p>
             </div>
           </CardContent>
         </Card>
-
-        {schedulingUser && (
-          <UserScheduleModal
-            deviceId={deviceId}
-            user={schedulingUser}
-            onSuccess={() => {
-              setSchedulingUser(null);
-              fetchUsers();
-            }}
-            onCancel={() => setSchedulingUser(null)}
-          />
-        )}
       </div>
     );
   }

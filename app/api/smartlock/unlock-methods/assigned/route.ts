@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/smartlock/unlock-methods/assigned/route.ts
 
 import { NextRequest, NextResponse } from "next/server";

@@ -1,41 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/smartlock/unlock-methods/EnrollMethodForm.tsx
+// components/smartlock/unlock-methods/AssignMethodForm.tsx
 
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, X, Loader2 } from "lucide-react";
+import { UserPlus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { UnlockKey } from "@/lib/tuya/tuya-api-wrapper";
 
 interface DeviceUser {
   user_id: string;
   nick_name: string;
 }
 
-interface EnrollMethodFormProps {
+interface AssignMethodFormProps {
   deviceId: string;
+  method: UnlockKey;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
 
-export default function EnrollMethodForm({
+export default function AssignMethodForm({
   deviceId,
+  method,
   onSuccess,
   onCancel,
-}: EnrollMethodFormProps) {
+}: AssignMethodFormProps) {
   const [users, setUsers] = useState<DeviceUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [formData, setFormData] = useState({
-    unlockType: "fingerprint",
-    userId: "",
-    userType: 1,
-  });
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ Fetch users on mount
+  // Fetch users on mount
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -66,42 +65,83 @@ export default function EnrollMethodForm({
     setError("");
 
     try {
-      console.log("📤 Enrolling method:", formData);
+      // Convert unlock_type to dp_code format
+      const dpCodeMap: Record<string, string> = {
+        password: "unlock_password",
+        fingerprint: "unlock_fingerprint",
+        card: "unlock_card",
+        face: "unlock_face",
+        hand: "unlock_hand",
+        finger_vein: "unlock_finger_vein",
+        eye: "unlock_eye",
+        remoteControl: "unlock_telecontrol_kit",
+      };
 
-      const response = await fetch("/api/smartlock/unlock-methods", {
+      const dpCode =
+        dpCodeMap[method.unlock_type] || `unlock_${method.unlock_type}`;
+
+      console.log("🔗 Assigning method:", {
+        deviceId,
+        userId: selectedUserId,
+        unlockList: [{ dp_code: dpCode, unlock_sn: method.unlock_no }],
+      });
+
+      const response = await fetch("/api/smartlock/unlock-methods/assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           deviceId,
-          unlockType: formData.unlockType,
-          userId: formData.userId,
-          userType: formData.userType,
+          userId: selectedUserId,
+          unlockList: [
+            {
+              dp_code: dpCode,
+              unlock_sn: method.unlock_no,
+            },
+          ],
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        console.log("✅ Method enrolled successfully");
-        setFormData({ unlockType: "fingerprint", userId: "", userType: 1 });
+        console.log("✅ Method assigned successfully");
         onSuccess?.();
       } else {
-        setError(data.error || "Failed to enroll unlock method");
+        setError(data.error || "Failed to assign unlock method");
       }
     } catch (error: any) {
+      console.error("❌ Error assigning method:", error);
       setError(error.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const getMethodTypeName = (type: string) => {
+    const nameMap: Record<string, string> = {
+      password: "Password",
+      fingerprint: "Fingerprint",
+      card: "Card/Fob",
+      remoteControl: "Remote Control",
+      face: "Face Recognition",
+      hand: "Palm Print",
+      finger_vein: "Finger Vein",
+      eye: "Iris Recognition",
+      key: "Physical Key",
+    };
+    return (
+      nameMap[type.toLowerCase()] ||
+      type.charAt(0).toUpperCase() + type.slice(1)
+    );
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <Card className="w-full max-w-md">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-medium">
-              Enroll New Unlock Method
+              Assign Unlock Method to User
             </CardTitle>
             <Button
               onClick={onCancel}
@@ -124,10 +164,26 @@ export default function EnrollMethodForm({
               </div>
             )}
 
-            {/* User Selection - Dropdown */}
+            {/* Method Info (Read-only) */}
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-500">Type:</span>
+                <span className="font-medium text-neutral-900">
+                  {getMethodTypeName(method.unlock_type)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-500">Slot Number:</span>
+                <span className="font-mono font-medium text-neutral-900">
+                  #{method.unlock_no}
+                </span>
+              </div>
+            </div>
+
+            {/* User Selection */}
             <div>
               <label className="block text-xs font-medium text-neutral-700 mb-1.5">
-                Select User <span className="text-red-500">*</span>
+                Assign to User <span className="text-red-500">*</span>
               </label>
               {loadingUsers ? (
                 <div className="flex items-center gap-2 p-3 border border-neutral-300 rounded-lg">
@@ -144,10 +200,8 @@ export default function EnrollMethodForm({
                 </div>
               ) : (
                 <select
-                  value={formData.userId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, userId: e.target.value })
-                  }
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
                   required
                 >
@@ -161,58 +215,11 @@ export default function EnrollMethodForm({
               )}
             </div>
 
-            {/* Unlock Method Type */}
-            <div>
-              <label className="block text-xs font-medium text-neutral-700 mb-1.5">
-                Unlock Method Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.unlockType}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    unlockType: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                required
-              >
-                <option value="password">Password</option>
-                <option value="fingerprint">Fingerprint</option>
-                <option value="card">Card/Fob</option>
-                <option value="face">Face Recognition</option>
-                <option value="remoteControl">Remote Control</option>
-              </select>
-            </div>
-
-            {/* User Type */}
-            <div>
-              <label className="block text-xs font-medium text-neutral-700 mb-1.5">
-                User Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.userType}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    userType: parseInt(e.target.value),
-                  })
-                }
-                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                required
-              >
-                <option value={1}>Home Member</option>
-                <option value={2}>Non-Home Member</option>
-              </select>
-            </div>
-
             {/* Info Banner */}
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs text-blue-700">
-                ℹ️ After clicking &quot;Start Enrollment&quot;, follow the
-                device prompts to register the unlock method (e.g., scan
-                fingerprint, tap card). The enrollment must be completed within
-                the device&apos;s timeout period.
+                ℹ️ This will assign the unlock method to the selected user. Make
+                sure the method was already enrolled on the physical device.
               </p>
             </div>
 
@@ -235,12 +242,12 @@ export default function EnrollMethodForm({
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Enrolling...
+                    Assigning...
                   </>
                 ) : (
                   <>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Start Enrollment
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Assign Method
                   </>
                 )}
               </Button>

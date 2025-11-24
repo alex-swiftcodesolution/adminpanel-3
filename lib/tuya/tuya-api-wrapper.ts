@@ -109,12 +109,32 @@ export interface HomeUser extends DeviceUser {
 }
 
 // Unlock Method Types
-export interface UnlockMethod {
-  unlock_sn: string;
-  unlock_type: number;
+export interface UnlockKey {
+  unlock_no: number; // The ID/slot number
+  unlock_type: string; // "password" | "fingerprint" | "card" | "remoteControl"
+  hijack?: boolean; // Duress alarm enabled (optional)
+}
+
+export interface DetailedUnlockMethod {
+  user_name: string;
+  user_type: number; // 0=unknown, 10=admin, 20=member, 40=shared, 50=super admin
+  user_id: string;
+  lock_user_id: number;
   unlock_name: string;
-  unlock_no: number;
-  is_hijack?: boolean;
+  dp_code: string; // "unlock_fingerprint", "unlock_password", etc.
+  unlock_sn: number;
+  unlock_attr: number; // 1=duress attribute
+  phase?: number; // Status (1=confirmed, 2=to be confirmed, etc.)
+  voice_attr: number; // 0=cannot unlock by voice, 1=can unlock by voice
+  operate?: string; // "CREATE", "MODIFY", "DELETE"
+  delivery_status?: string; // "ONGOING", "SUCCESS", "FAILED"
+  allocate_flag: number; // 1=never allocated (can unbind), 0=allocated
+  channel_id: number;
+  notify_info?: {
+    app_send: boolean;
+    voice_phone?: string;
+    owner_id?: string;
+  };
 }
 
 // History/Log Types
@@ -160,9 +180,9 @@ export interface Album {
 
 // Remote Unlock Types
 export interface RemoteUnlockMethod {
-  unlock_type: number;
-  unlock_name: string;
-  is_enabled: boolean;
+  remote_unlock_type: string; // "remoteUnlockWithoutPwd" | "remoteUnlockWithPwd"
+  open: boolean;
+  device_id: string;
 }
 
 // Device Info
@@ -792,15 +812,146 @@ export class UserAPI {
 
 export class UnlockMethodAPI {
   /**
-   * Assign unlocking methods to users
+   * ✅ Get list of unlocking methods NOT assigned to any user
+   * Documentation: GET /v1.0/devices/{device_id}/door-lock/unassigned-keys
+   *
+   * @param deviceId - The device ID
+   * @param unlockType - Optional filter: "fingerprint" | "password" | "card" | "remoteControl"
+   * @returns Array of UnlockKey objects
+   */
+  static async getUnassignedKeys(
+    deviceId: string,
+    unlockType?: string
+  ): Promise<UnlockKey[]> {
+    const result = await tuyaRequest({
+      method: "GET",
+      path: `/v1.0/devices/${deviceId}/door-lock/unassigned-keys`,
+      query: unlockType ? { unlock_type: unlockType } : undefined,
+    });
+
+    // Response format: { unlock_keys: [...] }
+    return extractArray<UnlockKey>(result, "unlock_keys");
+  }
+
+  /**
+   * ✅ Get list of unlocking methods assigned to a specific user
+   * Documentation: GET /v1.0/devices/{device_id}/door-lock/user-types/{user_type}/users/{user_id}/assigned-keys
+   *
+   * @param deviceId - The device ID
+   * @param userType - 1 (home member) or 2 (non-home member)
+   * @param userId - The user ID
+   * @param unlockType - Optional filter: "fingerprint" | "password" | "card"
+   * @returns Array of UnlockKey objects
+   */
+  static async getAssignedKeys(
+    deviceId: string,
+    userType: number,
+    userId: string,
+    unlockType?: string
+  ): Promise<UnlockKey[]> {
+    const result = await tuyaRequest({
+      method: "GET",
+      path: `/v1.0/devices/${deviceId}/door-lock/user-types/${userType}/users/${userId}/assigned-keys`,
+      query: unlockType ? { unlock_type: unlockType } : undefined,
+    });
+
+    // Response format: { unlock_keys: [...] }
+    return extractArray<UnlockKey>(result, "unlock_keys");
+  }
+
+  /**
+   * ✅ Enroll new unlocking method for a user
+   * Documentation: PUT /v1.0/devices/{device_id}/door-lock/actions/entry
+   */
+  static async enrollUnlockMethod(
+    deviceId: string,
+    data: {
+      unlock_type: string; // "fingerprint" | "password" | "card" | "face" | "remoteControl"
+      user_type: number; // 1 or 2
+      user_id: string;
+      password?: string; // For Bluetooth locks with password type
+      password_type?: string; // "ticket"
+      ticket_id?: string; // From getPasswordTicket()
+    }
+  ): Promise<boolean> {
+    return tuyaRequest({
+      method: "PUT",
+      path: `/v1.0/devices/${deviceId}/door-lock/actions/entry`,
+      body: data,
+    });
+  }
+
+  /**
+   * ✅ Delete an unlocking method
+   * Documentation: DELETE /v1.0/devices/{device_id}/door-lock/user-types/{user_type}/users/{user_id}/unlock-types/{unlock_type}/keys/{unlock_no}
+   */
+  static async deleteUnlockMethod(
+    deviceId: string,
+    userType: number,
+    userId: string,
+    unlockType: string, // Changed from number to string
+    unlockNo: number
+  ): Promise<boolean> {
+    return tuyaRequest({
+      method: "DELETE",
+      path: `/v1.0/devices/${deviceId}/door-lock/user-types/${userType}/users/${userId}/unlock-types/${unlockType}/keys/${unlockNo}`,
+    });
+  }
+
+  /**
+   * ✅ Cancel enrollment of unlocking method
+   * Documentation: PUT /v1.0/devices/{device_id}/door-lock/unlock-types/{unlock_type}/actions/cancel
+   */
+  static async cancelEnrollment(
+    deviceId: string,
+    unlockType: string // Changed from number to string
+  ): Promise<boolean> {
+    return tuyaRequest({
+      method: "PUT",
+      path: `/v1.0/devices/${deviceId}/door-lock/unlock-types/${unlockType}/actions/cancel`,
+    });
+  }
+
+  /**
+   * ✅ Synchronize unlocking methods from device to cloud
+   * Documentation: POST /v1.0/smart-lock/devices/{device_id}/opmodes/actions/sync
+   */
+  static async syncUnlockMethods(
+    deviceId: string,
+    codes?: string[]
+  ): Promise<boolean> {
+    const defaultCodes = [
+      "unlock_fingerprint",
+      "unlock_card",
+      "unlock_password",
+      "unlock_face",
+      "unlock_hand",
+      "unlock_finger_vein",
+      "unlock_telecontrol_kit",
+    ];
+
+    const codesString = (codes || defaultCodes).join(",");
+
+    console.log("🔄 Syncing with codes:", codesString);
+
+    return tuyaRequest({
+      method: "POST",
+      path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/actions/sync`,
+      body: { codes: codesString }, // ✅ Changed from query to body
+    });
+  }
+
+  /**
+   * ✅ Assign unlocking methods to a user
+   * Documentation: POST /v1.0/devices/{device_id}/door-lock/opmodes/actions/allocate
    */
   static async assignUnlockMethods(
     deviceId: string,
     data: {
       user_id: string;
-      unlock_methods: Array<{
-        unlock_type: number;
-        unlock_no: number;
+      unlock_list: Array<{
+        dp_code: string; // "unlock_password", "unlock_fingerprint", etc.
+        unlock_sn: number;
       }>;
     }
   ): Promise<boolean> {
@@ -812,134 +963,106 @@ export class UnlockMethodAPI {
   }
 
   /**
-   * Get list of unlocking methods assigned to a home user
+   * ✅ Unbind unlock methods from a user
+   * Documentation: POST /v1.0/smart-lock/devices/{device_id}/opmodes/actions/cancel-allocate
    */
-  static async getAssignedKeys(
-    deviceId: string,
-    userType: number,
-    userId: string
-  ): Promise<UnlockMethod[]> {
-    const result = await tuyaRequest({
-      method: "GET",
-      path: `/v1.0/devices/${deviceId}/door-lock/user-types/${userType}/users/${userId}/assigned-keys`,
-    });
-
-    return extractArray<UnlockMethod>(result);
-  }
-
-  /**
-   * Get list of unlocking methods not assigned to any home user
-   */
-  static async getUnassignedKeys(deviceId: string): Promise<UnlockMethod[]> {
-    const result = await tuyaRequest({
-      method: "GET",
-      path: `/v1.0/devices/${deviceId}/door-lock/unassigned-keys`,
-    });
-
-    // Extract array from Tuya's response format
-    return extractArray<UnlockMethod>(result);
-  }
-
-  /**
-   * Get unlocking methods for a specified user
-   */
-  static async getUserUnlockMethods(
-    deviceId: string,
-    userId: string
-  ): Promise<UnlockMethod[]> {
-    const result = await tuyaRequest({
-      method: "GET",
-      path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/${userId}`,
-    });
-
-    return extractArray<UnlockMethod>(result);
-  }
-
-  /**
-   * Synchronize unlocking methods by cloud
-   */
-  static async syncUnlockMethods(deviceId: string): Promise<boolean> {
-    return tuyaRequest({
-      method: "POST",
-      path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/actions/sync`,
-    });
-  }
-
-  /**
-   * Enroll unlocking methods for home users
-   */
-  static async enrollUnlockMethod(
+  static async unbindUnlockMethods(
     deviceId: string,
     data: {
-      unlock_type: number;
       user_id: string;
-      user_type: number;
+      unlock_list: Array<{
+        code: string; // "unlock_fingerprint", "unlock_password", etc.
+        unlock_sn: number;
+      }>;
     }
   ): Promise<boolean> {
     return tuyaRequest({
-      method: "PUT",
-      path: `/v1.0/devices/${deviceId}/door-lock/actions/entry`,
+      method: "POST",
+      path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/actions/cancel-allocate`,
       body: data,
     });
   }
 
   /**
-   * Delete an unlocking method used by home users
+   * ✅ Update unlock method details
+   * Documentation: PUT /v1.0/devices/{device_id}/door-lock/opmodes/{unlock_sn}
    */
-  static async deleteUnlockMethod(
+  static async updateUnlockMethod(
     deviceId: string,
-    userType: number,
-    userId: string,
-    unlockType: number,
-    unlockNo: number
-  ): Promise<boolean> {
-    return tuyaRequest({
-      method: "DELETE",
-      path: `/v1.0/devices/${deviceId}/door-lock/user-types/${userType}/users/${userId}/unlock-types/${unlockType}/keys/${unlockNo}`,
-    });
-  }
-
-  /**
-   * Cancel enrollment of unlocking method
-   */
-  static async cancelEnrollment(
-    deviceId: string,
-    unlockType: number
-  ): Promise<boolean> {
-    return tuyaRequest({
-      method: "PUT",
-      path: `/v1.0/devices/${deviceId}/door-lock/unlock-types/${unlockType}/actions/cancel`,
-    });
-  }
-
-  /**
-   * Update the name of an unlocking method
-   */
-  static async updateUnlockMethodName(
-    deviceId: string,
-    unlockSn: string,
-    name: string
+    unlockSn: number,
+    data: {
+      dp_code?: string;
+      unlock_name?: string;
+      unlock_attr?: number; // 1 = special/duress
+      notify_info?: {
+        app_send: boolean; // 0 or 1
+      };
+    }
   ): Promise<boolean> {
     return tuyaRequest({
       method: "PUT",
       path: `/v1.0/devices/${deviceId}/door-lock/opmodes/${unlockSn}`,
-      body: { unlock_name: name },
+      body: data,
     });
   }
 
   /**
-   * Add attribute to unlocking method (e.g., enable image capturing)
+   * ✅ Set special attributes (photo capturing, voice)
+   * Documentation: POST /v1.0/smart-lock/devices/{device_id}/opmodes/{opmode_id}/attribute/{attribute}/opmode-attr
    */
-  static async addUnlockMethodAttribute(
+  static async setUnlockMethodAttribute(
     deviceId: string,
-    opmodeId: string,
-    attribute: string,
-    value: any
+    opmodeId: number,
+    attribute: 1 | 2, // 1=voice, 2=photo capturing
+    enabled: boolean
   ): Promise<boolean> {
     return tuyaRequest({
       method: "POST",
       path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/${opmodeId}/attribute/${attribute}/opmode-attr`,
-      body: { value },
+      body: { enabled },
+    });
+  }
+
+  /**
+   * ✅ Get detailed unlock methods for a user
+   * Documentation: GET /v1.0/smart-lock/devices/{device_id}/opmodes/{user_id}
+   */
+  static async getDetailedUserUnlockMethods(
+    deviceId: string,
+    userId: string,
+    options: {
+      codes?: string[];
+      unlock_name?: string;
+      page_no?: number;
+      page_size?: number;
+    } = {}
+  ): Promise<{
+    total: number;
+    total_pages: number;
+    has_more: boolean;
+    records: DetailedUnlockMethod[];
+  }> {
+    const {
+      codes = [
+        "unlock_fingerprint",
+        "unlock_password",
+        "unlock_card",
+        "unlock_face",
+      ],
+      unlock_name = "",
+      page_no = 1,
+      page_size = 20,
+    } = options;
+
+    return tuyaRequest({
+      method: "GET",
+      path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/${userId}`,
+      query: {
+        codes: codes.join(","),
+        unlock_name,
+        page_no,
+        page_size,
+      },
     });
   }
 }

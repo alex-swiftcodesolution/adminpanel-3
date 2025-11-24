@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/api/smartlock/unlock-methods/assign/route.ts
+// app/api/smartlock/unlock-methods/unbind/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
 import { TuyaSmartLockAPI } from "@/lib/tuya/tuya-api-wrapper";
 
-// ✅ ASSIGN - Assign unlock method to user
+// ✅ UNBIND - Unbind unlock method from user
 export async function POST(request: NextRequest) {
   try {
     const { deviceId, userId, unlockList } = await request.json();
@@ -16,13 +16,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("🔗 Assigning unlock methods:", {
+    console.log("🔓 Unbinding unlock methods:", {
       deviceId,
       userId,
       unlockList,
     });
 
-    const result = await TuyaSmartLockAPI.UnlockMethod.assignUnlockMethods(
+    const result = await TuyaSmartLockAPI.UnlockMethod.unbindUnlockMethods(
       deviceId,
       {
         user_id: userId,
@@ -30,11 +30,11 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    console.log("✅ Methods assigned:", result);
+    console.log("✅ Methods unbound:", result);
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
-    console.error("❌ Error assigning methods:", error);
+    console.error("❌ Error unbinding methods:", error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
