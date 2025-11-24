@@ -2,199 +2,391 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import { DeviceUser } from "@/lib/tuya/tuya-api-wrapper";
-import { Edit, Trash2, User, Shield, Clock } from "lucide-react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import {
+  Edit,
+  Trash2,
+  User,
+  Shield,
+  RefreshCw,
+  Filter,
+  Info,
+  Clock,
+  Users as UsersIcon,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import UserScheduleModal from "./UserScheduleModal";
+
+interface DeviceUser {
+  user_id: string;
+  device_id: string;
+  nick_name: string;
+  sex: 0 | 1 | 2;
+  contact: string;
+  birthday?: number;
+  height: number;
+  weight: number;
+}
 
 interface UserListProps {
   deviceId: string;
   onEdit?: (user: DeviceUser) => void;
 }
 
-export default function UserList({ deviceId, onEdit }: UserListProps) {
-  const [users, setUsers] = useState<DeviceUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "device" | "home">("all");
+export interface UserListHandle {
+  refresh: () => void;
+}
 
-  useEffect(() => {
-    fetchUsers();
-  }, [deviceId, filter]);
+export interface UserListHandle {
+  refresh: () => void;
+}
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const type = filter === "home" ? "home" : "device";
-      const response = await fetch(
-        `/api/smartlock/users?deviceId=${deviceId}&type=${type}`
-      );
-      const data = await response.json();
+const UserList = forwardRef<UserListHandle, UserListProps>(
+  ({ deviceId, onEdit }, ref) => {
+    const [users, setUsers] = useState<DeviceUser[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+    const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
+    const [schedulingUser, setSchedulingUser] = useState<DeviceUser | null>(
+      null
+    );
 
-      if (data.success) {
-        setUsers(data.data);
+    const fetchUsers = useCallback(async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(
+          `/api/smartlock/users?deviceId=${deviceId}&type=device`
+        );
+        const data = await response.json();
+
+        if (data.success) {
+          setUsers(data.data);
+          setLastRefreshTime(new Date());
+          console.log(`👥 Users loaded: ${data.data.length}`);
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    }, [deviceId]);
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
+    useEffect(() => {
+      fetchUsers();
+    }, [fetchUsers]);
 
-    try {
-      const response = await fetch(
-        `/api/smartlock/users/${userId}?deviceId=${deviceId}`,
-        { method: "DELETE" }
-      );
+    // ✅ Expose refresh method
+    useImperativeHandle(
+      ref,
+      () => ({
+        refresh: () => {
+          console.log("🔄 Manual refresh triggered");
+          fetchUsers();
+        },
+      }),
+      [fetchUsers]
+    );
 
-      const data = await response.json();
+    const handleDelete = async (userId: string, userName: string) => {
+      if (
+        !confirm(
+          `Are you sure you want to delete "${userName}"?\n\nThis will remove the user from the device.`
+        )
+      )
+        return;
 
-      if (data.success) {
-        setUsers(users.filter((u) => u.user_id !== userId));
+      try {
+        setDeletingIds((prev) => new Set(prev).add(userId));
+
+        console.log("🗑️ Deleting user:", userId);
+
+        const response = await fetch(
+          `/api/smartlock/users/${userId}?deviceId=${deviceId}`,
+          { method: "DELETE" }
+        );
+
+        const data = await response.json();
+
+        if (data.success) {
+          console.log("✅ User deleted successfully");
+
+          // Remove from local state immediately
+          setUsers((prev) => prev.filter((u) => u.user_id !== userId));
+
+          // Refresh after delay
+          setTimeout(() => {
+            console.log("🔄 Refreshing user list...");
+            fetchUsers();
+          }, 1500);
+        } else {
+          setDeletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(userId);
+            return next;
+          });
+          alert("Failed to delete user: " + data.error);
+        }
+      } catch (error) {
+        console.error("Error deleting user:", error);
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+        alert("Failed to delete user");
       }
-    } catch (error) {
-      console.error("Error deleting user:", error);
+    };
+
+    const formatTimeAgo = (date: Date) => {
+      const seconds = Math.floor(
+        (new Date().getTime() - date.getTime()) / 1000
+      );
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      return date.toLocaleTimeString();
+    };
+
+    const getGenderLabel = (sex: 0 | 1 | 2) => {
+      const labels = { 0: "Unknown", 1: "Male", 2: "Female" };
+      return labels[sex] || "Unknown";
+    };
+
+    const getGenderIcon = (sex: 0 | 1 | 2) => {
+      if (sex === 1) return "♂️";
+      if (sex === 2) return "♀️";
+      return "👤";
+    };
+
+    if (loading && users.length === 0) {
+      return (
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i} className="border-neutral-200">
+                <CardContent className="p-6">
+                  <Skeleton className="h-12 w-12 rounded-full mb-4" />
+                  <Skeleton className="h-6 w-32 mb-2" />
+                  <Skeleton className="h-4 w-24" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
     }
-  };
 
-  const getUserTypeLabel = (type: number) => {
-    const types: Record<number, string> = {
-      0: "Admin",
-      1: "Member",
-      2: "Guest",
-      3: "Temporary",
-    };
-    return types[type] || "Unknown";
-  };
+    // Filter out deleting users
+    const visibleUsers = users.filter((u) => !deletingIds.has(u.user_id));
 
-  const getRoleLabel = (role?: number) => {
-    if (role === undefined) return "";
-    const roles: Record<number, string> = {
-      0: "Owner",
-      1: "Manager",
-      2: "Regular User",
-    };
-    return roles[role] || "Unknown";
-  };
-
-  if (loading) {
     return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">
+              Device Users
+            </h2>
+            <p className="text-xs text-neutral-500 mt-1">
+              Last updated: {formatTimeAgo(lastRefreshTime)}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Badge
+              variant="outline"
+              className="h-8 px-3 font-normal border-neutral-200"
+            >
+              <UsersIcon className="mr-2 h-3 w-3" />
+              <span className="text-xs">
+                {visibleUsers.length} user{visibleUsers.length !== 1 ? "s" : ""}
+              </span>
+            </Badge>
+
+            <Button
+              onClick={() => fetchUsers()}
+              disabled={loading}
+              variant="outline"
+              size="sm"
+              className="h-8 border-neutral-200"
+            >
+              <RefreshCw
+                className={`mr-2 h-3 w-3 ${loading ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        <Separator className="bg-neutral-200" />
+
+        {/* User Grid */}
+        {visibleUsers.length === 0 ? (
+          <Card className="border-neutral-200">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <User className="h-12 w-12 text-neutral-300 mb-3" />
+              <p className="text-sm text-neutral-500">No users found</p>
+              <p className="text-xs text-neutral-400 mt-1">
+                Users must be enrolled directly on the lock device
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {visibleUsers.map((user) => {
+              const isDeleting = deletingIds.has(user.user_id);
+
+              return (
+                <Card
+                  key={user.user_id}
+                  className={`border-neutral-200 hover:border-neutral-400 transition-all ${
+                    isDeleting ? "opacity-50 border-red-300" : ""
+                  }`}
+                >
+                  <CardContent className="p-6">
+                    {/* User Avatar & Name */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 rounded-full bg-neutral-100 flex items-center justify-center text-xl">
+                          {getGenderIcon(user.sex)}
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-neutral-900">
+                            {user.nick_name || "Unnamed User"}
+                          </h3>
+                          <p className="text-xs text-neutral-500 font-mono">
+                            ID: {user.user_id}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* User Details */}
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2 text-sm text-neutral-600">
+                        <span className="text-xs">Gender:</span>
+                        <Badge
+                          variant="secondary"
+                          className="h-5 px-2 text-xs font-normal bg-neutral-100 text-neutral-700"
+                        >
+                          {getGenderLabel(user.sex)}
+                        </Badge>
+                      </div>
+
+                      {user.contact && (
+                        <div className="flex items-center gap-2 text-xs text-neutral-600">
+                          <span>Contact:</span>
+                          <span className="font-medium">{user.contact}</span>
+                        </div>
+                      )}
+
+                      {user.height > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-neutral-600">
+                          <span>Height:</span>
+                          <span className="font-medium">{user.height} cm</span>
+                        </div>
+                      )}
+
+                      {user.weight > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-neutral-600">
+                          <span>Weight:</span>
+                          <span className="font-medium">
+                            {(user.weight / 1000).toFixed(1)} kg
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <Separator className="my-4 bg-neutral-100" />
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => onEdit?.(user)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8 text-xs border-neutral-200 hover:bg-neutral-50"
+                        disabled={isDeleting}
+                      >
+                        <Edit className="mr-2 h-3 w-3" />
+                        Edit
+                      </Button>
+
+                      {/* <Button
+                        onClick={() => setSchedulingUser(user)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8 text-xs border-neutral-200 hover:bg-neutral-50"
+                        disabled={isDeleting}
+                      >
+                        <Clock className="mr-2 h-3 w-3" />
+                        Schedule
+                      </Button> */}
+
+                      <Button
+                        onClick={() =>
+                          handleDelete(user.user_id, user.nick_name)
+                        }
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8 text-xs border-neutral-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                        disabled={isDeleting}
+                      >
+                        <Trash2 className="mr-2 h-3 w-3" />
+                        Delete
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Info Banner */}
+        <Card className="border-neutral-200 bg-neutral-50/50">
+          <CardContent className="p-4 flex items-start gap-3">
+            <Info className="h-5 w-5 text-neutral-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-neutral-700">
+                About Device Users
+              </p>
+              <p className="text-xs text-neutral-600 mt-1">
+                Users must enroll their unlock methods (fingerprint, card,
+                password, etc.) directly on the lock device. This interface only
+                manages user profiles.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {schedulingUser && (
+          <UserScheduleModal
+            deviceId={deviceId}
+            user={schedulingUser}
+            onSuccess={() => {
+              setSchedulingUser(null);
+              fetchUsers();
+            }}
+            onCancel={() => setSchedulingUser(null)}
+          />
+        )}
       </div>
     );
   }
+);
 
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Users</h2>
+UserList.displayName = "UserList";
 
-        <div className="flex gap-2">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as any)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Users</option>
-            <option value="device">Device Users</option>
-            <option value="home">Home Users</option>
-          </select>
-          <span className="px-3 py-2 bg-gray-100 rounded-lg text-sm text-gray-600">
-            {users.length} users
-          </span>
-        </div>
-      </div>
-
-      {users.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <User className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-          <p className="text-gray-500">No users found</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {users.map((user) => (
-            <div
-              key={user.user_id}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  {user.avatar ? (
-                    <img
-                      src={user.avatar}
-                      alt={user.user_name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                      <User className="w-6 h-6 text-blue-600" />
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="font-semibold text-gray-900">
-                      {user.user_name}
-                    </h3>
-                    <span className="text-xs text-gray-500">
-                      ID: {user.user_id}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => onEdit?.(user)}
-                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Edit user"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(user.user_id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete user"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Shield className="w-4 h-4" />
-                  <span>Type: {getUserTypeLabel(user.user_type)}</span>
-                </div>
-
-                {user.role !== undefined && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Shield className="w-4 h-4" />
-                    <span>Role: {getRoleLabel(user.role)}</span>
-                  </div>
-                )}
-
-                {user.unlock_methods && user.unlock_methods.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1">
-                      Unlock Methods:
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {user.unlock_methods.map((method, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs"
-                        >
-                          {method.unlock_name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+export default UserList;

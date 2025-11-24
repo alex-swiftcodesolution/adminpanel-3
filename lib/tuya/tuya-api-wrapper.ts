@@ -53,11 +53,53 @@ export interface PasswordTicket {
 // User Types
 export interface DeviceUser {
   user_id: string;
-  user_name: string;
-  user_type: number;
-  avatar?: string;
-  role?: number;
-  unlock_methods?: UnlockMethod[];
+  device_id: string;
+  nick_name: string; // ✅ FIXED: was user_name
+  sex: 0 | 1 | 2; // ✅ FIXED: was user_type (0=unknown, 1=male, 2=female)
+  contact: string; // ✅ Phone or email
+  birthday?: number; // ✅ Timestamp
+  height: number; // ✅ cm
+  weight: number; // ✅ grams (divide by 1000 for kg)
+}
+
+// ✅ NEW: Smart Lock User Interface (includes unlock methods)
+export interface SmartLockUser {
+  user_id: string;
+  avatar_url?: string;
+  user_contact: string;
+  unlock_detail?: Array<{
+    dp_code: string;
+    unlock_list: Array<{
+      unlock_id: string;
+      unlock_sn: number;
+      unlock_name: string;
+      unlock_attr: number;
+      op_mode_id: number;
+      photo_unlock: boolean;
+      admin: boolean;
+    }>;
+    count: number;
+  }>;
+  user_type: number; // 10=admin, 20=member, 50=owner
+  nick_name: string;
+  lock_user_id: number;
+  back_home_notify_attr: number;
+  effective_flag: number;
+  time_schedule_info?: {
+    permanent: boolean;
+    effective_time: number;
+    expired_time: number;
+    operate: string;
+    delivery_status: string;
+    schedule_details?: Array<{
+      start_minute: number;
+      end_minute: number;
+      working_day: number;
+      time_zone_id: string;
+      all_day: boolean;
+    }>;
+  };
+  uid: string;
 }
 
 export interface HomeUser extends DeviceUser {
@@ -431,16 +473,21 @@ export class PasswordAPI {
 
 export class UserAPI {
   /**
-   * Create a device user (note: endpoint says POST but description says delete - check docs)
+   * Create a device user (member)
+   * After creating, user needs to enroll fingerprint/card/password on the physical lock
    */
   static async createDeviceUser(
     deviceId: string,
     data: {
-      user_name: string;
-      user_type: number;
-      avatar?: string;
+      nick_name: string; // ✅ FIXED: was user_name
+      sex: 1 | 2; // ✅ FIXED: was user_type (1=male, 2=female)
+      contact?: string; // ✅ Optional: phone or email
+      birthday?: number; // ✅ Optional: timestamp
+      height?: number; // ✅ Optional: cm
+      weight?: number; // ✅ Optional: grams (not kg!)
     }
-  ): Promise<DeviceUser> {
+  ): Promise<{ user_id: string }> {
+    // ✅ Returns user_id only
     return tuyaRequest({
       method: "POST",
       path: `/v1.0/devices/${deviceId}/user`,
@@ -455,8 +502,12 @@ export class UserAPI {
     deviceId: string,
     userId: string,
     data: {
-      user_name?: string;
-      avatar?: string;
+      nick_name?: string; // ✅ FIXED: was user_name
+      sex?: 1 | 2; // ✅ FIXED: added sex (1=male, 2=female)
+      contact?: string; // ✅ ADDED
+      birthday?: number; // ✅ ADDED
+      height?: number; // ✅ ADDED
+      weight?: number; // ✅ ADDED
     }
   ): Promise<boolean> {
     return tuyaRequest({
@@ -467,12 +518,13 @@ export class UserAPI {
   }
 
   /**
-   * Update the role of a device user
+   * Update the role of a smart lock user
+   * NOTE: This is for smart lock users, different from device members
    */
   static async updateUserRole(
     deviceId: string,
     userId: string,
-    role: number
+    role: "admin" | "normal" // ✅ FIXED: was number, should be string
   ): Promise<boolean> {
     return tuyaRequest({
       method: "PUT",
@@ -533,37 +585,92 @@ export class UserAPI {
   }
 
   /**
-   * Query list of users by device ID (v1.1)
+   * Query list of users by device ID (v1.1) with pagination
    */
-  static async getDeviceUsersV11(deviceId: string): Promise<DeviceUser[]> {
+  static async getDeviceUsersV11Paginated(
+    deviceId: string,
+    options: {
+      keyword?: string;
+      role?: "admin" | "normal" | "";
+      page_no?: number;
+      page_size?: number;
+    } = {}
+  ): Promise<{
+    has_more: boolean;
+    total_pages: number;
+    total: number;
+    records: DeviceUser[];
+  }> {
+    const { keyword = "", role = "", page_no = 1, page_size = 20 } = options;
+
     return tuyaRequest({
       method: "GET",
       path: `/v1.1/devices/${deviceId}/users`,
+      query: {
+        keyword,
+        role,
+        page_no,
+        page_size,
+      },
     });
   }
 
   /**
-   * Get list of home users and unlocking methods
+   * Get list of smart lock users with unlocking methods
+   * This is different from device members - includes unlock method details
    */
-  static async getHomeUsers(deviceId: string): Promise<HomeUser[]> {
-    const result = await tuyaRequest({
+  static async getSmartLockUsers(
+    deviceId: string,
+    options: {
+      codes?: string[];
+      page_no?: number;
+      page_size?: number;
+    } = {}
+  ): Promise<{
+    total: number;
+    total_pages: number;
+    has_more: boolean;
+    records: SmartLockUser[];
+  }> {
+    const {
+      codes = [
+        "unlock_fingerprint",
+        "unlock_password",
+        "unlock_card",
+        "unlock_face",
+      ],
+      page_no = 1,
+      page_size = 20,
+    } = options;
+
+    return tuyaRequest({
       method: "GET",
       path: `/v1.0/smart-lock/devices/${deviceId}/users`,
+      query: {
+        codes: codes.join(","),
+        page_no,
+        page_size,
+      },
     });
-
-    return extractArray<HomeUser>(result);
   }
 
   /**
-   * Update the validity period of a home user
+   * Update the validity period of a smart lock user
    */
   static async updateHomeUserSchedule(
     deviceId: string,
     userId: string,
     data: {
-      effective_time: number;
-      invalid_time: number;
-      schedule?: string;
+      permanent?: boolean;
+      effective_time?: number;
+      expired_time?: number;
+      schedule_details?: Array<{
+        start_minute?: number;
+        end_minute?: number;
+        working_day?: number;
+        time_zone_id?: string;
+        all_day?: boolean;
+      }>;
     }
   ): Promise<boolean> {
     return tuyaRequest({
@@ -594,7 +701,7 @@ export class UserAPI {
   }
 
   /**
-   * Delete information about users
+   * Delete smart lock user information
    */
   static async deleteUsersInfo(
     deviceId: string,
@@ -623,6 +730,58 @@ export class UserAPI {
       method: "POST",
       path: `/v1.0/devices/${deviceId}/device-lock/users/${userId}/allocate`,
       body: data,
+    });
+  }
+
+  /**
+   * Get user unlock methods
+   */
+  static async getUserUnlockMethods(
+    deviceId: string,
+    userId: string,
+    options: {
+      codes?: string[];
+      unlock_name?: string;
+      page_no?: number;
+      page_size?: number;
+    } = {}
+  ): Promise<{
+    total: number;
+    total_pages: number;
+    has_more: boolean;
+    records: Array<{
+      user_name: string;
+      user_type: number;
+      user_id: string;
+      lock_user_id: number;
+      unlock_name: string;
+      dp_code: string;
+      unlock_sn: number;
+      unlock_attr: number;
+      phase: number;
+      voice_attr: number;
+      operate: string;
+      delivery_status: string;
+      allocate_flag: number;
+      channel_id: number;
+    }>;
+  }> {
+    const {
+      codes = [],
+      unlock_name = "",
+      page_no = 1,
+      page_size = 20,
+    } = options;
+
+    return tuyaRequest({
+      method: "GET",
+      path: `/v1.0/smart-lock/devices/${deviceId}/opmodes/${userId}`,
+      query: {
+        codes: codes.join(","),
+        unlock_name,
+        page_no,
+        page_size,
+      },
     });
   }
 }
