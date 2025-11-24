@@ -1,15 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/smartlock/history/combined/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
 import { TuyaSmartLockAPI } from "@/lib/tuya/tuya-api-wrapper";
-import { extractArray } from "@/lib/utils/array-helpers";
 
 export async function GET(request: NextRequest) {
   try {
-    const deviceId = request.nextUrl.searchParams.get("deviceId");
-    const startTime = request.nextUrl.searchParams.get("startTime");
-    const endTime = request.nextUrl.searchParams.get("endTime");
-    const pageSize = request.nextUrl.searchParams.get("pageSize");
+    const searchParams = request.nextUrl.searchParams;
+    const deviceId = searchParams.get("deviceId");
+    const startTime = searchParams.get("startTime");
+    const endTime = searchParams.get("endTime");
+    const pageNo = searchParams.get("pageNo");
+    const pageSize = searchParams.get("pageSize");
+    const dpCodes = searchParams.get("dpCodes");
 
     if (!deviceId) {
       return NextResponse.json(
@@ -18,23 +21,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const params: any = {};
-    if (startTime) params.start_time = parseInt(startTime);
-    if (endTime) params.end_time = parseInt(endTime);
-    if (pageSize) params.page_size = parseInt(pageSize);
+    const params = {
+      page_no: pageNo ? parseInt(pageNo) : 1,
+      page_size: pageSize ? parseInt(pageSize) : 20,
+      start_time: startTime ? parseInt(startTime) : 0,
+      end_time: endTime ? parseInt(endTime) : 0,
+      target_standard_dp_codes: dpCodes || undefined,
+    };
 
-    const records = await TuyaSmartLockAPI.History.getCombinedRecords(
+    console.log("📋 Fetching combined records with params:", params);
+
+    const result = await TuyaSmartLockAPI.History.getCombinedRecords(
       deviceId,
       params
     );
 
-    const dataArray = extractArray(records);
+    console.log(
+      `✅ Retrieved ${result.records.length} combined records (total: ${result.total})`
+    );
 
-    return NextResponse.json({ success: true, data: dataArray });
+    return NextResponse.json({
+      success: true,
+      data: result,
+    });
   } catch (error: any) {
+    console.error("❌ Error fetching combined records:", error);
     return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
+      {
+        success: false,
+        error: error.message,
+        data: {
+          total: 0,
+          total_pages: 0,
+          has_more: false,
+          records: [],
+        },
+      },
+      { status: 200 }
     );
   }
 }

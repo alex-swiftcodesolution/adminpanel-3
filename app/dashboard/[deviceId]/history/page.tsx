@@ -5,7 +5,8 @@
 import { use, useState } from "react";
 import UnlockHistoryList from "@/components/smartlock/history/UnlockHistoryList";
 import AlarmHistoryList from "@/components/smartlock/history/AlarmHistoryList";
-import { History, Unlock, AlertTriangle } from "lucide-react";
+import CombinedHistoryList from "@/components/smartlock/history/CombinedHistoryList";
+import { History, Unlock, AlertTriangle, List } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ deviceId: string }>;
@@ -13,7 +14,9 @@ interface PageProps {
 
 export default function HistoryPage({ params }: PageProps) {
   const { deviceId } = use(params);
-  const [activeTab, setActiveTab] = useState<"unlocks" | "alarms">("unlocks");
+  const [activeTab, setActiveTab] = useState<"combined" | "unlocks" | "alarms">(
+    "unlocks"
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -31,6 +34,17 @@ export default function HistoryPage({ params }: PageProps) {
 
         {/* Tabs */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1 inline-flex gap-1">
+          {/* <button
+            onClick={() => setActiveTab("combined")}
+            className={`px-6 py-3 rounded-lg transition-colors flex items-center gap-2 ${
+              activeTab === "combined"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+          >
+            <List className="w-5 h-5" />
+            All Records
+          </button> */}
           <button
             onClick={() => setActiveTab("unlocks")}
             className={`px-6 py-3 rounded-lg transition-colors flex items-center gap-2 ${
@@ -56,11 +70,11 @@ export default function HistoryPage({ params }: PageProps) {
         </div>
 
         {/* Content */}
-        {activeTab === "unlocks" ? (
-          <UnlockHistoryList deviceId={deviceId} />
-        ) : (
-          <AlarmHistoryList deviceId={deviceId} />
-        )}
+        {/* {activeTab === "combined" && (
+          <CombinedHistoryList deviceId={deviceId} />
+        )} */}
+        {activeTab === "unlocks" && <UnlockHistoryList deviceId={deviceId} />}
+        {activeTab === "alarms" && <AlarmHistoryList deviceId={deviceId} />}
       </div>
     </div>
   );

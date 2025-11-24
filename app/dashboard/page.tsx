@@ -225,7 +225,7 @@ export default function DeviceSelectionPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {device.online ? (
+                      {/* {device.online ? (
                         <span className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
                           <Wifi className="w-3 h-3" />
                           Online
@@ -235,7 +235,7 @@ export default function DeviceSelectionPage() {
                           <WifiOff className="w-3 h-3" />
                           Offline
                         </span>
-                      )}
+                      )} */}
                     </div>
                   </div>
                   <svg

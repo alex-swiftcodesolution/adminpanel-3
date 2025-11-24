@@ -138,6 +138,82 @@ export interface DetailedUnlockMethod {
 }
 
 // History/Log Types
+// Unlock Record from API
+export interface UnlockLogItem {
+  update_time: number; // Timestamp in milliseconds
+  status: {
+    code: string; // "unlock_fingerprint", "unlock_password", etc.
+    value: string | number;
+  };
+  nick_name: string;
+  unlock_name: string;
+  user_id: string;
+  avatar?: string;
+  media_infos?: MediaInfoItem[];
+}
+
+// Alarm Record from API
+export interface AlarmLogItem {
+  update_time: number; // Timestamp in milliseconds
+  status: Array<{
+    code: string; // "hijack", "alarm_lock", "doorbell"
+    value: string | object;
+  }>;
+  nick_name: string;
+  media_infos?: MediaInfoItem[];
+}
+
+// Media Info from API
+export interface MediaInfoItem {
+  file_url?: string;
+  file_key?: string;
+  media_url?: string;
+  media_key?: string;
+  bucket?: string;
+  file_path?: string;
+  media_path?: string;
+  media_bucket?: string;
+}
+
+// Combined Record from API
+export interface CombinedRecordItem {
+  record_id: string;
+  record_type: "alarm" | "normal";
+  gmt_create: number;
+  user_id: string;
+  user_name: string;
+  avatar?: string;
+  unlock_name: string;
+  member_bindable_flag: number; // 1 = can associate, 0 = cannot
+  dps: Array<Record<string, string | number>>;
+  media_info_list?: MediaInfoItem[];
+  union_unlock_info?: Array<{
+    user_name: string;
+    opmode: string;
+    unlock_name: string;
+  }>;
+}
+
+// Paginated Response Types
+export interface UnlockLogsResponse {
+  total: number;
+  logs: UnlockLogItem[];
+}
+
+export interface AlarmLogsResponse {
+  total: number;
+  records: AlarmLogItem[];
+}
+
+export interface CombinedRecordsResponse {
+  total: number;
+  total_pages: number;
+  has_more: boolean;
+  unread_count?: number;
+  records: CombinedRecordItem[];
+}
+
+// Legacy types for backward compatibility
 export interface UnlockRecord {
   id: string;
   unlock_id: number;
@@ -1189,131 +1265,177 @@ export class DoorControlAPI {
 
 export class HistoryAPI {
   /**
-   * Query unlocking history
+   * Query unlocking history (v1.0)
+   * All parameters are REQUIRED per official docs
    */
   static async getUnlockLogs(
     deviceId: string,
-    params?: {
-      start_time?: number;
-      end_time?: number;
-      page_size?: number;
-      last_row_key?: string;
+    params: {
+      page_no: number;
+      page_size: number;
+      start_time: number;
+      end_time: number;
     }
-  ): Promise<UnlockRecord[]> {
-    const result = await tuyaRequest({
-      method: "GET",
-      path: `/v1.0/devices/${deviceId}/door-lock/open-logs${
-        params ? "?" + new URLSearchParams(params as any).toString() : ""
-      }`,
+  ): Promise<UnlockLogsResponse> {
+    const queryParams = new URLSearchParams({
+      page_no: String(params.page_no),
+      page_size: String(params.page_size),
+      start_time: String(params.start_time),
+      end_time: String(params.end_time),
     });
 
-    return extractArray<UnlockRecord>(result);
+    const result = await tuyaRequest({
+      method: "GET",
+      path: `/v1.0/devices/${deviceId}/door-lock/open-logs?${queryParams.toString()}`,
+    });
+
+    return {
+      total: result?.total || 0,
+      logs: result?.logs || [],
+    };
   }
 
   /**
-   * Query unlocking history v1.1
+   * Query unlocking history (v1.1) - includes media info
    */
   static async getUnlockLogsV11(
     deviceId: string,
-    params?: {
-      start_time?: number;
-      end_time?: number;
-      page_size?: number;
-      last_row_key?: string;
+    params: {
+      page_no: number;
+      page_size: number;
+      start_time: number;
+      end_time: number;
+      show_media_info?: boolean;
     }
-  ): Promise<UnlockRecord[]> {
-    const queryString = params
-      ? `?${new URLSearchParams(params as any).toString()}`
-      : "";
-    return tuyaRequest({
-      method: "GET",
-      path: `/v1.1/devices/${deviceId}/door-lock/open-logs${queryString}`,
+  ): Promise<UnlockLogsResponse> {
+    const queryParams = new URLSearchParams({
+      page_no: String(params.page_no),
+      page_size: String(params.page_size),
+      start_time: String(params.start_time),
+      end_time: String(params.end_time),
+      show_media_info: String(params.show_media_info !== false),
     });
+
+    const result = await tuyaRequest({
+      method: "GET",
+      path: `/v1.1/devices/${deviceId}/door-lock/open-logs?${queryParams.toString()}`,
+    });
+
+    return {
+      total: result?.total || 0,
+      logs: result?.logs || [],
+    };
   }
 
   /**
-   * Get alert/alarm history
+   * Get alert/alarm history (v1.0)
    */
   static async getAlarmLogs(
     deviceId: string,
-    params?: {
-      start_time?: number;
-      end_time?: number;
-      page_size?: number;
-      last_row_key?: string;
+    params: {
+      page_no: number;
+      page_size: number;
+      codes?: string; // "hijack", "alarm_lock", "doorbell" - comma separated
     }
-  ): Promise<AlarmRecord[]> {
+  ): Promise<AlarmLogsResponse> {
+    const queryParams = new URLSearchParams({
+      page_no: String(params.page_no),
+      page_size: String(params.page_size),
+    });
+
+    if (params.codes) {
+      queryParams.append("codes", params.codes);
+    }
+
     try {
       const result = await tuyaRequest({
         method: "GET",
-        path: `/v1.0/devices/${deviceId}/door-lock/alarm-logs${
-          params ? "?" + new URLSearchParams(params as any).toString() : ""
-        }`,
+        path: `/v1.0/devices/${deviceId}/door-lock/alarm-logs?${queryParams.toString()}`,
       });
 
-      return extractArray<AlarmRecord>(result);
+      return {
+        total: result?.total || 0,
+        records: result?.records || [],
+      };
     } catch (error: any) {
-      // Alarm logs might not be supported - return empty array
-      console.warn(error, "Alarm logs not available for this device");
-      return [];
+      console.warn("Alarm logs not available:", error.message);
+      return { total: 0, records: [] };
     }
   }
 
   /**
-   * Get alert history v1.1
+   * Get alert history (v1.1) - includes media info
    */
   static async getAlarmLogsV11(
     deviceId: string,
-    params?: {
-      codes?: string; // Alarm codes to filter (e.g., "doorbell")
-      page_no?: number; // Page number
-      page_size?: number; // Number of records per page
-      show_media_info?: boolean; // Whether to include media URLs
+    params: {
+      page_no: number;
+      page_size: number;
+      codes?: string;
+      show_media_info?: boolean;
     }
-  ): Promise<AlarmRecord[]> {
-    try {
-      // Set defaults to match working API call
-      const queryParams = {
-        codes: params?.codes || "doorbell",
-        page_no: String(params?.page_no || 1),
-        page_size: String(params?.page_size || 10),
-        show_media_info: String(params?.show_media_info !== false),
-      };
+  ): Promise<AlarmLogsResponse> {
+    const queryParams = new URLSearchParams({
+      page_no: String(params.page_no),
+      page_size: String(params.page_size),
+      codes: params.codes || "alarm_lock",
+      show_media_info: String(params.show_media_info !== false),
+    });
 
+    try {
       const result = await tuyaRequest({
         method: "GET",
-        path: `/v1.1/devices/${deviceId}/door-lock/alarm-logs?${new URLSearchParams(
-          queryParams
-        ).toString()}`,
+        path: `/v1.1/devices/${deviceId}/door-lock/alarm-logs?${queryParams.toString()}`,
       });
 
-      return extractArray<AlarmRecord>(result);
+      const records = result?.records || [];
+
+      return {
+        // Use actual records length if total is 0 but records exist
+        total: result?.total || records.length,
+        records: records,
+      };
     } catch (error: any) {
-      console.warn(error, "Alarm logs not available for this device");
-      return [];
+      console.warn("Alarm logs v1.1 not available:", error.message);
+      return { total: 0, records: [] };
     }
   }
 
   /**
-   * Get combined alert and unlocking history
+   * Get combined unlock and alarm history
    */
   static async getCombinedRecords(
     deviceId: string,
-    params?: {
-      start_time?: number;
-      end_time?: number;
-      page_size?: number;
-      last_row_key?: string;
+    params: {
+      page_no: number;
+      page_size: number;
+      start_time?: number; // 0 for no time filter
+      end_time?: number; // 0 for no time filter
+      target_standard_dp_codes?: string; // comma-separated codes
     }
-  ): Promise<CombinedRecord[]> {
-    const result = await tuyaRequest({
-      method: "GET",
-      path: `/v1.0/devices/${deviceId}/door-lock/records${
-        params ? "?" + new URLSearchParams(params as any).toString() : ""
-      }`,
+  ): Promise<CombinedRecordsResponse> {
+    const queryParams = new URLSearchParams({
+      page_no: String(params.page_no),
+      page_size: String(params.page_size),
+      start_time: String(params.start_time || 0),
+      end_time: String(params.end_time || 0),
+      target_standard_dp_codes:
+        params.target_standard_dp_codes ||
+        "unlock_fingerprint,unlock_password,unlock_card,unlock_face,unlock_key,alarm_lock,hijack,doorbell",
     });
 
-    return extractArray<CombinedRecord>(result);
+    const result = await tuyaRequest({
+      method: "GET",
+      path: `/v1.0/devices/${deviceId}/door-lock/records?${queryParams.toString()}`,
+    });
+
+    return {
+      total: result?.total || 0,
+      total_pages: result?.total_pages || 0,
+      has_more: result?.has_more || false,
+      unread_count: result?.unread_count,
+      records: result?.records || [],
+    };
   }
 
   /**

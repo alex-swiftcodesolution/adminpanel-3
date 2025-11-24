@@ -1,25 +1,86 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // components/smartlock/history/UnlockHistoryList.tsx
 
 "use client";
 
-import { useState, useEffect } from "react";
-import { UnlockRecord } from "@/lib/tuya/tuya-api-wrapper";
+import { useState, useEffect, useCallback } from "react";
+import { UnlockLogItem } from "@/lib/tuya/tuya-api-wrapper";
 import {
   Clock,
   User,
   Key,
   Image as ImageIcon,
   AlertCircle,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Fingerprint,
+  CreditCard,
+  Smartphone,
+  Eye,
+  KeyRound,
+  Link as LinkIcon,
 } from "lucide-react";
+import LinkUserModal from "./LinkUserModal";
 
 interface UnlockHistoryListProps {
   deviceId: string;
 }
 
+interface PaginatedResponse {
+  total: number;
+  logs: UnlockLogItem[];
+  page_no: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+// Map unlock codes to display names and icons
+const UNLOCK_TYPE_MAP: Record<string, { name: string; icon: React.ReactNode }> =
+  {
+    unlock_fingerprint: {
+      name: "Fingerprint",
+      icon: <Fingerprint className="w-4 h-4" />,
+    },
+    unlock_password: { name: "Password", icon: <Key className="w-4 h-4" /> },
+    unlock_temporary: {
+      name: "Temporary Password",
+      icon: <Clock className="w-4 h-4" />,
+    },
+    unlock_dynamic: {
+      name: "Dynamic Password",
+      icon: <KeyRound className="w-4 h-4" />,
+    },
+    unlock_card: { name: "Card", icon: <CreditCard className="w-4 h-4" /> },
+    unlock_face: {
+      name: "Face Recognition",
+      icon: <Eye className="w-4 h-4" />,
+    },
+    unlock_key: { name: "Mechanical Key", icon: <Key className="w-4 h-4" /> },
+    unlock_app: {
+      name: "App Remote",
+      icon: <Smartphone className="w-4 h-4" />,
+    },
+    unlock_identity_card: {
+      name: "Identity Card",
+      icon: <CreditCard className="w-4 h-4" />,
+    },
+    unlock_emergency: {
+      name: "Emergency Password",
+      icon: <AlertCircle className="w-4 h-4" />,
+    },
+  };
+
 export default function UnlockHistoryList({
   deviceId,
 }: UnlockHistoryListProps) {
-  const [records, setRecords] = useState<UnlockRecord[]>([]);
+  const [data, setData] = useState<PaginatedResponse>({
+    total: 0,
+    logs: [],
+    page_no: 1,
+    page_size: 20,
+    has_more: false,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dateRange, setDateRange] = useState({
@@ -27,82 +88,98 @@ export default function UnlockHistoryList({
     end: "",
   });
 
+  // Link User Modal State
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<{
+    id: string;
+    userId?: string;
+    userName?: string;
+  } | null>(null);
+
+  const fetchRecords = useCallback(
+    async (pageNo: number = 1) => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const params = new URLSearchParams({
+          deviceId,
+          pageNo: String(pageNo),
+          pageSize: "20",
+        });
+
+        if (dateRange.start) {
+          const startTime = Math.floor(
+            new Date(dateRange.start).getTime() / 1000
+          );
+          params.append("startTime", String(startTime));
+        }
+
+        if (dateRange.end) {
+          const endTime = Math.floor(new Date(dateRange.end).getTime() / 1000);
+          params.append("endTime", String(endTime));
+        }
+
+        const response = await fetch(
+          `/api/smartlock/history/unlocks?${params.toString()}`
+        );
+        const result = await response.json();
+
+        if (result.success) {
+          setData(result.data);
+        } else {
+          setError(result.error || "Failed to fetch records");
+        }
+      } catch (err: any) {
+        console.error("Error fetching unlock history:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [deviceId, dateRange]
+  );
+
   useEffect(() => {
-    fetchRecords();
-  }, [deviceId, dateRange]);
-
-  const fetchRecords = async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      let url = `/api/smartlock/history/unlocks?deviceId=${deviceId}`;
-
-      if (dateRange.start) {
-        const startTime = new Date(dateRange.start).getTime() / 1000;
-        url += `&startTime=${startTime}`;
-      }
-
-      if (dateRange.end) {
-        const endTime = new Date(dateRange.end).getTime() / 1000;
-        url += `&endTime=${endTime}`;
-      }
-
-      const response = await fetch(url);
-      const data = await response.json();
-
-      console.log("📊 Unlock history response:", data); // Debug log
-
-      if (data.success && data.data) {
-        // Ensure data.data is an array
-        const recordsArray = Array.isArray(data.data) ? data.data : [];
-        setRecords(recordsArray);
-      } else if (data.error) {
-        setError(data.error);
-        setRecords([]); // Set empty array on error
-      } else {
-        setRecords([]); // Default to empty array
-      }
-    } catch (error: any) {
-      console.error("Error fetching unlock history:", error);
-      setError(error.message);
-      setRecords([]); // Set empty array on exception
-    } finally {
-      setLoading(false);
-    }
-  };
+    fetchRecords(1);
+  }, [fetchRecords]);
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
+    const ts = timestamp > 9999999999 ? timestamp : timestamp * 1000;
+    return new Date(ts).toLocaleString();
   };
 
-  const getUnlockTypeName = (type: number) => {
-    const types: Record<number, string> = {
-      0: "Password",
-      1: "Fingerprint",
-      2: "Card",
-      3: "Bluetooth",
-      4: "Face Recognition",
-      5: "Key",
-      6: "Remote",
-    };
-    return types[type] || "Unknown";
-  };
-
-  if (loading) {
+  const getUnlockInfo = (code: string) => {
     return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+      UNLOCK_TYPE_MAP[code] || { name: code, icon: <Key className="w-4 h-4" /> }
     );
-  }
+  };
+
+  const handleOpenLinkModal = (record: UnlockLogItem, index: number) => {
+    // Generate a unique record ID
+    const recordId = `${record.update_time}-${index}`;
+    setSelectedRecord({
+      id: recordId,
+      userId: record.user_id,
+      userName: record.nick_name,
+    });
+    setLinkModalOpen(true);
+  };
+
+  const totalPages = Math.ceil(data.total / data.page_size);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Unlock History</h2>
+      {/* Header + Filters */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-gray-900">Unlock History</h2>
+          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
+            {data.total} records
+          </span>
+        </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <input
             type="date"
             value={dateRange.start}
@@ -111,6 +188,7 @@ export default function UnlockHistoryList({
             }
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
           />
+          <span className="text-gray-400">to</span>
           <input
             type="date"
             value={dateRange.end}
@@ -119,9 +197,18 @@ export default function UnlockHistoryList({
             }
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
           />
+          <button
+            onClick={() => fetchRecords(1)}
+            disabled={loading}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
       </div>
 
+      {/* Error Message */}
       {error && (
         <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
           <div className="flex items-center gap-2 text-yellow-800">
@@ -134,7 +221,15 @@ export default function UnlockHistoryList({
         </div>
       )}
 
-      {records.length === 0 && !error ? (
+      {/* Loading State */}
+      {loading && (
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && data.logs.length === 0 && !error && (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
           <Clock className="w-12 h-12 text-gray-400 mx-auto mb-2" />
           <p className="text-gray-500">No unlock records found</p>
@@ -142,58 +237,147 @@ export default function UnlockHistoryList({
             Records will appear here after the door is unlocked
           </p>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {records.map((record) => (
-            <div
-              key={record.id}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Key className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-semibold text-gray-900">
-                      {record.unlock_name || `Unlock #${record.unlock_id}`}
-                    </h3>
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
-                      {getUnlockTypeName(record.unlock_type)}
-                    </span>
-                  </div>
+      )}
 
-                  <div className="space-y-1 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      <span>{formatDate(record.time)}</span>
+      {/* Records List */}
+      {!loading && data.logs.length > 0 && (
+        <div className="space-y-3">
+          {data.logs.map((record, index) => {
+            const unlockInfo = getUnlockInfo(record.status.code);
+            const hasMedia =
+              record.media_infos && record.media_infos.length > 0;
+
+            return (
+              <div
+                key={`${record.update_time}-${index}`}
+                className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
+                        {unlockInfo.icon}
+                      </span>
+                      <h3 className="font-semibold text-gray-900">
+                        {record.unlock_name || unlockInfo.name}
+                      </h3>
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                        {unlockInfo.name}
+                      </span>
                     </div>
 
-                    {record.user_name && (
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        <span>{formatDate(record.update_time)}</span>
+                      </div>
+
+                      {/* {record.nick_name ? (
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4" />
+                          <span>{record.nick_name}</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenLinkModal(record, index)}
+                          className="flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline"
+                        >
+                          <LinkIcon className="w-4 h-4" />
+                          <span>Link to user</span>
+                        </button>
+                      )} */}
+
+                      {record.status.value && (
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <Key className="w-4 h-4" />
+                          <span>ID: {String(record.status.value)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="ml-4 flex flex-col gap-2 items-end">
+                    {/* Media Preview */}
+                    {hasMedia && (
+                      <div className="flex gap-2">
+                        {record.media_infos!.slice(0, 2).map((media, i) => (
+                          <a
+                            key={i}
+                            href={media.file_url || media.media_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm"
+                          >
+                            <ImageIcon className="w-4 h-4" />
+                            {media.media_url ? "Video" : "Image"}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Link User Button (if already has user) */}
+                    {record.nick_name && (
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4" />
-                        <span>{record.user_name}</span>
+                        <span>{record.nick_name}</span>
                       </div>
                     )}
                   </div>
                 </div>
-
-                {record.media_url && (
-                  <div className="ml-4">
-                    <a
-                      href={record.media_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm"
-                    >
-                      <ImageIcon className="w-4 h-4" />
-                      View Image
-                    </a>
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {/* Pagination */}
+      {!loading && data.total > data.page_size && (
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <p className="text-sm text-gray-600">
+            Showing {(data.page_no - 1) * data.page_size + 1} -{" "}
+            {Math.min(data.page_no * data.page_size, data.total)} of{" "}
+            {data.total}
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchRecords(data.page_no - 1)}
+              disabled={data.page_no <= 1 || loading}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <span className="px-3 py-1 text-sm text-gray-600">
+              Page {data.page_no} of {totalPages}
+            </span>
+
+            <button
+              onClick={() => fetchRecords(data.page_no + 1)}
+              disabled={!data.has_more || loading}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Link User Modal */}
+      <LinkUserModal
+        isOpen={linkModalOpen}
+        onClose={() => {
+          setLinkModalOpen(false);
+          setSelectedRecord(null);
+        }}
+        deviceId={deviceId}
+        recordId={selectedRecord?.id || ""}
+        recordType="unlock"
+        currentUserId={selectedRecord?.userId}
+        currentUserName={selectedRecord?.userName}
+        onSuccess={() => fetchRecords(data.page_no)}
+      />
     </div>
   );
 }
