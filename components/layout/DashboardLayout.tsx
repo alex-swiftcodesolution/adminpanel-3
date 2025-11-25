@@ -15,9 +15,9 @@ export default function DashboardLayout({
   deviceId,
 }: DashboardLayoutProps) {
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-background">
       <Sidebar deviceId={deviceId} />
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 lg:ml-0">{children}</main>
     </div>
   );
 }

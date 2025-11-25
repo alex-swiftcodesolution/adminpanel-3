@@ -3,48 +3,59 @@
 "use client";
 
 import { use, useState, useRef } from "react";
+import { motion } from "framer-motion";
 import PasswordList, {
   PasswordListHandle,
 } from "@/components/smartlock/passwords/PasswordList";
 import CreatePasswordForm from "@/components/smartlock/passwords/CreatePasswordForm";
 import { Key, Trash2, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface PasswordsPageProps {
   params: Promise<{ deviceId: string }>;
 }
 
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 },
+};
+
 export default function PasswordsPage({ params }: PasswordsPageProps) {
   const { deviceId } = use(params);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
-  const passwordListRef = useRef<PasswordListHandle>(null); // ✅ Properly typed
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const passwordListRef = useRef<PasswordListHandle>(null);
 
   const handlePasswordCreated = () => {
     setRefreshKey((prev) => prev + 1);
   };
 
   const handleDeleteAllIndividually = async () => {
-    console.log("🗑️ Delete All clicked");
-
-    // ✅ Get password IDs from ref
+    setShowDeleteDialog(false);
     const passwordIds = passwordListRef.current?.getAllPasswordIds() || [];
 
-    console.log(`📋 Found ${passwordIds.length} password IDs:`, passwordIds);
-
     if (passwordIds.length === 0) {
-      alert("No passwords to delete!");
-      return;
-    }
-
-    if (
-      !confirm(
-        `⚠️ This will delete ALL ${passwordIds.length} password${
-          passwordIds.length > 1 ? "s" : ""
-        } one by one.\n\n` +
-          `This may take approximately ${passwordIds.length * 2} seconds.\n\n` +
-          `Continue?`
-      )
-    ) {
       return;
     }
 
@@ -55,10 +66,6 @@ export default function PasswordsPage({ params }: PasswordsPageProps) {
     for (let i = 0; i < passwordIds.length; i++) {
       const id = passwordIds[i];
       try {
-        console.log(
-          `🗑️ Deleting password ${id} (${i + 1}/${passwordIds.length})...`
-        );
-
         const response = await fetch(
           `/api/smartlock/passwords/temporary/${id}?deviceId=${deviceId}`,
           { method: "DELETE" }
@@ -68,47 +75,24 @@ export default function PasswordsPage({ params }: PasswordsPageProps) {
 
         if (data.success) {
           successCount++;
-          console.log(
-            `✅ Deleted ${id} (${successCount}/${passwordIds.length})`
-          );
         } else {
           failCount++;
-          console.log(`❌ Failed to delete ${id}: ${data.error}`);
         }
 
-        // Wait 1.5 seconds between deletions to avoid rate limiting
         if (i < passwordIds.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1500));
         }
       } catch (error) {
         failCount++;
-        console.error(`❌ Error deleting ${id}:`, error);
       }
     }
 
     setIsDeleting(false);
-
-    // Refresh the list
     passwordListRef.current?.refresh();
-
-    alert(
-      `🎉 Deletion complete!\n\n` +
-        `✅ Successfully deleted: ${successCount}\n` +
-        `❌ Failed: ${failCount}\n\n` +
-        `The list will refresh now.`
-    );
   };
 
   const handleClearAll = async () => {
-    if (
-      !confirm(
-        "⚠️ Trying Tuya's 'Clear All' API...\n\n" +
-          "Note: This API may not work for this device type.\n\n" +
-          "If it fails, use 'Delete All (Safe)' button instead."
-      )
-    ) {
-      return;
-    }
+    setShowClearDialog(false);
 
     try {
       const response = await fetch("/api/smartlock/passwords/clear", {
@@ -120,78 +104,133 @@ export default function PasswordsPage({ params }: PasswordsPageProps) {
       const data = await response.json();
 
       if (data.success) {
-        alert("✅ Clear All API returned success. Verifying in 3 seconds...");
-
         setTimeout(() => {
           passwordListRef.current?.refresh();
         }, 3000);
-      } else {
-        alert("❌ Clear All failed: " + data.error);
       }
     } catch (error) {
       console.error("Error clearing passwords:", error);
-      alert("❌ Failed to clear passwords");
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Key className="w-8 h-8 text-blue-600" />
-            </div>
+    <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <motion.div
+              whileHover={{ rotate: [0, -10, 10, -10, 0] }}
+              transition={{ duration: 0.5 }}
+              className="p-3 bg-muted rounded-lg"
+            >
+              <Key className="w-6 h-6 md:w-7 md:h-7" />
+            </motion.div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-2xl md:text-3xl font-bold">
                 Password Management
               </h1>
-              <p className="text-gray-500">Device ID: {deviceId}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Create and manage temporary access codes
+              </p>
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleDeleteAllIndividually}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setShowDeleteDialog(true)}
               disabled={isDeleting}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Delete all passwords one by one (recommended)"
+              variant="outline"
+              size="sm"
+              className="h-9"
             >
-              <Trash2 className="w-5 h-5" />
-              {isDeleting ? "Deleting..." : "Delete All (Safe)"}
-            </button>
+              <Trash2 className="w-4 h-4 mr-2" />
+              {isDeleting ? "Deleting..." : "Delete All"}
+            </Button>
 
-            <button
-              onClick={handleClearAll}
+            <Button
+              onClick={() => setShowClearDialog(true)}
               disabled={isDeleting}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed opacity-60"
-              title="⚠️ May not work for this device type"
+              variant="outline"
+              size="sm"
+              className="h-9 opacity-60"
             >
-              <AlertTriangle className="w-5 h-5" />
+              <AlertTriangle className="w-4 h-4 mr-2" />
               Clear All (API)
-            </button>
+            </Button>
           </div>
         </div>
+        <Separator />
+      </motion.div>
 
-        {/* Two-column layout */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-6">
-            <CreatePasswordForm
-              deviceId={deviceId}
-              onSuccess={handlePasswordCreated}
-            />
-          </div>
+      {/* Content */}
+      <motion.div
+        variants={container}
+        initial="hidden"
+        animate="show"
+        className="grid lg:grid-cols-3 gap-6"
+      >
+        <motion.div variants={item} className="lg:col-span-1">
+          <CreatePasswordForm
+            deviceId={deviceId}
+            onSuccess={handlePasswordCreated}
+          />
+        </motion.div>
 
-          <div className="lg:col-span-2">
-            <PasswordList
-              key={refreshKey}
-              deviceId={deviceId}
-              ref={passwordListRef} // ✅ Pass ref
-            />
-          </div>
-        </div>
-      </div>
+        <motion.div variants={item} className="lg:col-span-2">
+          <PasswordList
+            key={refreshKey}
+            deviceId={deviceId}
+            ref={passwordListRef}
+          />
+        </motion.div>
+      </motion.div>
+
+      {/* Delete All Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete All Passwords?</DialogTitle>
+            <DialogDescription>
+              This will delete all active passwords one by one. This action
+              cannot be undone and may take some time to complete.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleDeleteAllIndividually}>Delete All</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear All Dialog */}
+      <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Use Clear All API?</DialogTitle>
+            <DialogDescription>
+              This will attempt to use Tuya&apos;s Clear All API. Note: This API
+              may not work for all device types. If it fails, use &quot;Delete
+              All&quot; instead.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleClearAll}>Try Clear All</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

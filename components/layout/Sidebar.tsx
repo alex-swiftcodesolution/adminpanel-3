@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Key,
@@ -12,11 +13,16 @@ import {
   DoorOpen,
   History,
   Image,
-  Shield,
   Info,
   Lock,
   ArrowLeft,
+  Menu,
+  X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { useState } from "react";
+import { ThemeToggle } from "./theme-toggle";
 
 interface SidebarProps {
   deviceId: string;
@@ -24,95 +30,85 @@ interface SidebarProps {
 
 export default function Sidebar({ deviceId }: SidebarProps) {
   const pathname = usePathname();
-
-  console.log("🎨 Sidebar rendering for device:", deviceId);
+  const [isOpen, setIsOpen] = useState(false);
 
   const menuItems = [
     {
       name: "Overview",
       href: `/dashboard/${deviceId}`,
       icon: LayoutDashboard,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100",
     },
     {
       name: "Passwords",
       href: `/dashboard/${deviceId}/passwords`,
       icon: Key,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
     },
     {
       name: "Users",
       href: `/dashboard/${deviceId}/users`,
       icon: Users,
-      color: "text-pink-600",
-      bgColor: "bg-pink-100",
     },
     {
       name: "Unlock Methods",
       href: `/dashboard/${deviceId}/unlock-methods`,
       icon: Fingerprint,
-      color: "text-green-600",
-      bgColor: "bg-green-100",
     },
     {
       name: "Door Control",
       href: `/dashboard/${deviceId}/door-control`,
       icon: DoorOpen,
-      color: "text-indigo-600",
-      bgColor: "bg-indigo-100",
     },
     {
       name: "History",
       href: `/dashboard/${deviceId}/history`,
       icon: History,
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-100",
     },
     {
       name: "Media",
       href: `/dashboard/${deviceId}/media`,
       icon: Image,
-      color: "text-orange-600",
-      bgColor: "bg-orange-100",
     },
-
     {
       name: "Device Info",
       href: `/dashboard/${deviceId}/device-info`,
       icon: Info,
-      color: "text-gray-600",
-      bgColor: "bg-gray-100",
     },
   ];
 
-  return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen p-4 flex flex-col">
+  const SidebarContent = () => (
+    <>
       {/* Logo/Brand */}
-      <div className="flex items-center gap-3 mb-8 p-3">
-        <div className="p-2 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg">
-          <Lock className="w-6 h-6 text-white" />
-        </div>
+      <div className="flex items-center gap-3 p-4">
+        <motion.div
+          whileHover={{ rotate: [0, -10, 10, -10, 0] }}
+          transition={{ duration: 0.5 }}
+          className="p-2 bg-foreground rounded-lg"
+        >
+          <Lock className="w-5 h-5 text-background" />
+        </motion.div>
         <div>
-          <h1 className="font-bold text-lg text-gray-900">Smart Lock</h1>
-          <p className="text-xs text-gray-500">Management</p>
+          <h1 className="font-bold text-base text-foreground">Smart Lock</h1>
+          <p className="text-xs text-muted-foreground">Management</p>
         </div>
       </div>
 
+      <Separator />
+
       {/* Device ID Display */}
-      <div className="mb-6 p-3 bg-gray-50 rounded-lg">
-        <p className="text-xs text-gray-500 mb-1">Active Device</p>
-        <p
-          className="text-sm font-mono font-semibold text-gray-900 truncate"
-          title={deviceId}
-        >
-          {deviceId}
-        </p>
+      <div className="p-4">
+        <div className="p-3 bg-muted rounded-lg">
+          <p className="text-xs text-muted-foreground mb-1">Active Device</p>
+          <p
+            className="text-xs font-mono font-semibold truncate"
+            title={deviceId}
+          >
+            {deviceId}
+          </p>
+        </div>
       </div>
 
       {/* Navigation Menu */}
-      <nav className="space-y-1 flex-1">
+      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -121,29 +117,90 @@ export default function Sidebar({ deviceId }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-all ${
+              onClick={() => setIsOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${
                 isActive
-                  ? `${item.bgColor} ${item.color} font-semibold`
-                  : "text-gray-600 hover:bg-gray-100"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              <span className="text-sm">{item.name}</span>
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">{item.name}</span>
             </Link>
           );
         })}
       </nav>
 
+      <Separator />
+
       {/* Footer */}
-      <div className="mt-auto pt-4 border-t border-gray-200">
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+      <div className="p-3 space-y-2">
+        <div className="flex items-center justify-between px-3">
+          <span className="text-xs text-muted-foreground">Theme</span>
+          <ThemeToggle />
+        </div>
+        <Button
+          variant="outline"
+          className="w-full justify-start text-sm"
+          asChild
         >
-          <ArrowLeft className="w-4 h-4" />
-          Change Device
-        </Link>
+          <Link href="/dashboard">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Change Device
+          </Link>
+        </Button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b h-16 flex items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-foreground rounded-lg">
+            <Lock className="w-5 h-5 text-background" />
+          </div>
+          <div>
+            <h1 className="font-bold text-sm">Smart Lock</h1>
+            <p className="text-xs text-muted-foreground">Management</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)}>
+          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </Button>
+      </div>
+
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="lg:hidden fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Mobile Sidebar */}
+      <motion.aside
+        initial={false}
+        animate={{
+          x: isOpen ? 0 : "-100%",
+        }}
+        transition={{ type: "spring", damping: 20 }}
+        className="lg:hidden fixed top-16 left-0 bottom-0 w-64 bg-card border-r z-40 flex flex-col"
+      >
+        <SidebarContent />
+      </motion.aside>
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex w-64 border-r bg-card flex-col min-h-screen sticky top-0">
+        <SidebarContent />
+      </aside>
+
+      {/* Spacer for mobile */}
+      <div className="lg:hidden h-16" />
+    </>
   );
 }

@@ -4,7 +4,14 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Save } from "lucide-react";
+import { Calendar, Save, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface CreatePasswordFormProps {
   deviceId: string;
@@ -73,142 +80,133 @@ export default function CreatePasswordForm({
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
-    >
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">
-        Create Temporary Password
-      </h3>
+    <Card className="h-fit sticky top-6">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Calendar className="h-5 w-5" />
+          Create Password
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription className="text-sm">{error}</AlertDescription>
+            </Alert>
+          )}
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-          {error}
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Password Name
-          </label>
-          <input
-            type="text"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="e.g., Guest Access, Delivery"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Password (6 digits)
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={formData.password}
+          <div className="space-y-2">
+            <Label htmlFor="name">Password Name</Label>
+            <Input
+              id="name"
+              value={formData.name}
               onChange={(e) =>
-                setFormData({ ...formData, password: e.target.value })
+                setFormData({ ...formData, name: e.target.value })
               }
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="1234567"
-              pattern="[0-9]{7}"
-              maxLength={7}
+              placeholder="e.g., Guest Access, Delivery"
               required
             />
-            <button
-              type="button"
-              onClick={generateRandomPassword}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Password (7 digits)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="password"
+                type="text"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                placeholder="1234567"
+                pattern="[0-9]{7}"
+                maxLength={7}
+                required
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                onClick={generateRandomPassword}
+                variant="outline"
+                size="icon"
+              >
+                <Sparkles className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="effectiveTime">Valid From</Label>
+              <Input
+                id="effectiveTime"
+                type="datetime-local"
+                value={formData.effectiveTime}
+                onChange={(e) =>
+                  setFormData({ ...formData, effectiveTime: e.target.value })
+                }
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invalidTime">Valid Until</Label>
+              <Input
+                id="invalidTime"
+                type="datetime-local"
+                value={formData.invalidTime}
+                onChange={(e) =>
+                  setFormData({ ...formData, invalidTime: e.target.value })
+                }
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isPeriodic"
+              checked={formData.isPeriodic}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, isPeriodic: checked as boolean })
+              }
+            />
+            <Label
+              htmlFor="isPeriodic"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              Generate
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Calendar className="w-4 h-4 inline mr-1" />
-              Valid From
-            </label>
-            <input
-              type="datetime-local"
-              value={formData.effectiveTime}
-              onChange={(e) =>
-                setFormData({ ...formData, effectiveTime: e.target.value })
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
+              Periodic Password (Recurring)
+            </Label>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <Calendar className="w-4 h-4 inline mr-1" />
-              Valid Until
-            </label>
-            <input
-              type="datetime-local"
-              value={formData.invalidTime}
-              onChange={(e) =>
-                setFormData({ ...formData, invalidTime: e.target.value })
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-        </div>
+          {formData.isPeriodic && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="space-y-2"
+            >
+              <Label htmlFor="phase">Phase (Days between recurrence)</Label>
+              <Input
+                id="phase"
+                type="number"
+                value={formData.phase}
+                onChange={(e) =>
+                  setFormData({ ...formData, phase: e.target.value })
+                }
+                placeholder="7"
+                min="1"
+                required={formData.isPeriodic}
+              />
+            </motion.div>
+          )}
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="isPeriodic"
-            checked={formData.isPeriodic}
-            onChange={(e) =>
-              setFormData({ ...formData, isPeriodic: e.target.checked })
-            }
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-          />
-          <label
-            htmlFor="isPeriodic"
-            className="text-sm font-medium text-gray-700"
-          >
-            Periodic Password (Recurring)
-          </label>
-        </div>
-
-        {formData.isPeriodic && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Phase (Days between recurrence)
-            </label>
-            <input
-              type="number"
-              value={formData.phase}
-              onChange={(e) =>
-                setFormData({ ...formData, phase: e.target.value })
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="7"
-              min="1"
-              required={formData.isPeriodic}
-            />
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          <Save className="w-5 h-5" />
-          {loading ? "Creating..." : "Create Password"}
-        </button>
-      </div>
-    </form>
+          <Button type="submit" disabled={loading} className="w-full">
+            <Save className="w-4 h-4 mr-2" />
+            {loading ? "Creating..." : "Create Password"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
