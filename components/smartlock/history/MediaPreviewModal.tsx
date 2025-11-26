@@ -5,7 +5,6 @@
 
 import { useState, useEffect } from "react";
 import {
-  X,
   Image as ImageIcon,
   Video,
   Loader2,
@@ -13,9 +12,20 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  ImageOff,
 } from "lucide-react";
 import { MediaInfoItem } from "@/lib/tuya/tuya-api-wrapper";
 import { MEDIA_EVENT_TYPES } from "@/lib/tuya/constants";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface MediaPreviewModalProps {
   isOpen: boolean;
@@ -40,10 +50,14 @@ export default function MediaPreviewModal({
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [resolvedUrls, setResolvedUrls] = useState<MediaInfoItem[]>([]);
+  const [imageError, setImageError] = useState<Record<number, boolean>>({});
+  const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (isOpen && mediaInfos.length > 0) {
       setCurrentIndex(0);
+      setImageError({});
+      setImageLoading({});
       resolveMediaUrls();
     }
   }, [isOpen, mediaInfos, deviceId]);
@@ -60,7 +74,8 @@ export default function MediaPreviewModal({
         const isComplete =
           media.file_url &&
           (media.file_url.includes("?sign=") ||
-            media.file_url.includes("?q-sign"));
+            media.file_url.includes("?q-sign") ||
+            media.file_url.includes("X-Amz-"));
 
         if (isComplete) {
           // URL already signed, use directly
@@ -129,6 +144,8 @@ export default function MediaPreviewModal({
   const hasMultiple = resolvedUrls.length > 1;
   const hasVideo = currentMedia?.media_url;
   const hasImage = currentMedia?.file_url;
+  const currentImageError = imageError[currentIndex];
+  const currentImageLoading = imageLoading[currentIndex];
 
   const goNext = () => {
     setCurrentIndex((prev) => (prev + 1) % resolvedUrls.length);
@@ -140,12 +157,57 @@ export default function MediaPreviewModal({
     );
   };
 
+  const handleImageError = (index: number) => {
+    setImageError((prev) => ({ ...prev, [index]: true }));
+    setImageLoading((prev) => ({ ...prev, [index]: false }));
+  };
+
+  const handleImageLoad = (index: number) => {
+    setImageLoading((prev) => ({ ...prev, [index]: false }));
+  };
+
+  const handleImageLoadStart = (index: number) => {
+    setImageLoading((prev) => ({ ...prev, [index]: true }));
+  };
+
+  // Check if URL might be expired (signed URLs typically expire)
+  const isUrlPotentiallyExpired = (url: string) => {
+    if (!url) return false;
+    try {
+      const urlObj = new URL(url);
+      const expiresParam = urlObj.searchParams.get("X-Amz-Expires");
+      const dateParam = urlObj.searchParams.get("X-Amz-Date");
+
+      if (expiresParam && dateParam) {
+        // Parse AWS date format: YYYYMMDDTHHMMSSZ
+        const year = parseInt(dateParam.substring(0, 4));
+        const month = parseInt(dateParam.substring(4, 6)) - 1;
+        const day = parseInt(dateParam.substring(6, 8));
+        const hour = parseInt(dateParam.substring(9, 11));
+        const minute = parseInt(dateParam.substring(11, 13));
+        const second = parseInt(dateParam.substring(13, 15));
+
+        const signedDate = new Date(
+          Date.UTC(year, month, day, hour, minute, second)
+        );
+        const expiresSeconds = parseInt(expiresParam);
+        const expiryDate = new Date(
+          signedDate.getTime() + expiresSeconds * 1000
+        );
+
+        return new Date() > expiryDate;
+      }
+    } catch (e) {
+      // If parsing fails, assume URL might be valid
+    }
+    return false;
+  };
+
   // Handle keyboard navigation
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
       if (e.key === "ArrowLeft" && hasMultiple) goPrev();
       if (e.key === "ArrowRight" && hasMultiple) goNext();
     };
@@ -154,66 +216,49 @@ export default function MediaPreviewModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, hasMultiple]);
 
-  if (!isOpen) return null;
+  const urlExpired =
+    hasImage && isUrlPotentiallyExpired(currentMedia.file_url!);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {title || "Media Preview"}
-            </h2>
-            <div className="flex items-center gap-3 text-sm text-gray-500 mt-1 flex-wrap">
-              {eventType !== undefined && MEDIA_EVENT_TYPES[eventType] && (
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
-                  {MEDIA_EVENT_TYPES[eventType]}
-                </span>
-              )}
-              {timestamp && <span>{formatDate(timestamp)}</span>}
-              {hasMultiple && (
-                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
-                  {currentIndex + 1} / {resolvedUrls.length}
-                </span>
-              )}
-            </div>
+        <DialogHeader className="p-4 pb-2 shrink-0">
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            {title || "Media Preview"}
+          </DialogTitle>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+            {eventType !== undefined && MEDIA_EVENT_TYPES[eventType] && (
+              <Badge variant="secondary">{MEDIA_EVENT_TYPES[eventType]}</Badge>
+            )}
+            {timestamp && <span>{formatDate(timestamp)}</span>}
+            {hasMultiple && (
+              <Badge variant="outline">
+                {currentIndex + 1} / {resolvedUrls.length}
+              </Badge>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Content */}
-        <div className="relative bg-gray-900 flex-1 min-h-[300px] flex items-center justify-center overflow-hidden">
+        <div className="relative bg-muted flex-1 min-h-[300px] flex items-center justify-center overflow-hidden">
           {loading ? (
-            <div className="flex flex-col items-center gap-3 text-white">
-              <Loader2 className="w-8 h-8 animate-spin" />
-              <p>Loading media...</p>
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Loading media...</p>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center gap-3 text-red-400 p-4 text-center">
-              <AlertCircle className="w-8 h-8" />
-              <p>{error}</p>
-              <button
-                onClick={resolveMediaUrls}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-              >
+            <div className="flex flex-col items-center gap-3 p-4 text-center">
+              <Alert variant="destructive" className="max-w-sm">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+              <Button onClick={resolveMediaUrls} variant="outline" size="sm">
                 Retry
-              </button>
+              </Button>
             </div>
           ) : resolvedUrls.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 text-gray-400 p-4">
+            <div className="flex flex-col items-center gap-3 text-muted-foreground p-4">
               <ImageIcon className="w-12 h-12" />
               <p>No media available</p>
               <p className="text-sm">
@@ -225,20 +270,22 @@ export default function MediaPreviewModal({
               {/* Navigation Arrows */}
               {hasMultiple && (
                 <>
-                  <button
+                  <Button
                     onClick={goPrev}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 text-white rounded-full hover:bg-black/70 z-10 transition-colors"
-                    title="Previous (←)"
+                    variant="secondary"
+                    size="icon"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-10 rounded-full"
                   >
-                    <ChevronLeft className="w-6 h-6" />
-                  </button>
-                  <button
+                    <ChevronLeft className="w-5 h-5" />
+                  </Button>
+                  <Button
                     onClick={goNext}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 text-white rounded-full hover:bg-black/70 z-10 transition-colors"
-                    title="Next (→)"
+                    variant="secondary"
+                    size="icon"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-10 rounded-full"
                   >
-                    <ChevronRight className="w-6 h-6" />
-                  </button>
+                    <ChevronRight className="w-5 h-5" />
+                  </Button>
                 </>
               )}
 
@@ -251,24 +298,64 @@ export default function MediaPreviewModal({
                     poster={currentMedia.file_url}
                     controls
                     autoPlay
-                    className="max-w-full max-h-[55vh] rounded-lg shadow-lg"
+                    className="max-w-full max-h-[50vh] rounded-lg shadow-lg"
+                    onError={() => handleImageError(currentIndex)}
                   >
                     Your browser does not support video playback.
                   </video>
-                ) : hasImage ? (
-                  <img
-                    key={currentMedia.file_url}
-                    src={currentMedia.file_url}
-                    alt="Media preview"
-                    className="max-w-full max-h-[55vh] rounded-lg shadow-lg object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = "none";
-                      setError("Failed to load image");
-                    }}
-                  />
+                ) : hasImage && !currentImageError ? (
+                  <div className="relative">
+                    {currentImageLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-lg">
+                        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                    {/* Use regular img tag with unoptimized to bypass Next.js image optimization */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      key={currentMedia.file_url}
+                      src={currentMedia.file_url}
+                      alt="Media preview"
+                      className="max-w-full max-h-[50vh] rounded-lg shadow-lg object-contain"
+                      onError={() => handleImageError(currentIndex)}
+                      onLoad={() => handleImageLoad(currentIndex)}
+                      onLoadStart={() => handleImageLoadStart(currentIndex)}
+                      loading="eager"
+                      crossOrigin="anonymous"
+                    />
+                  </div>
+                ) : currentImageError || urlExpired ? (
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground p-8 text-center">
+                    <div className="p-4 bg-muted rounded-full">
+                      <ImageOff className="w-12 h-12" />
+                    </div>
+                    <p className="font-medium">Unable to load image</p>
+                    <p className="text-sm max-w-xs">
+                      {urlExpired
+                        ? "The image URL has expired. This happens with older records."
+                        : "The image could not be loaded. It may have been deleted or the URL has expired."}
+                    </p>
+                    {currentMedia?.file_url && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                        className="mt-2"
+                      >
+                        <a
+                          href={currentMedia.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="gap-1"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Try Opening Directly
+                        </a>
+                      </Button>
+                    )}
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 text-gray-400">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
                     <ImageIcon className="w-12 h-12" />
                     <p>Media URL not available</p>
                   </div>
@@ -280,33 +367,34 @@ export default function MediaPreviewModal({
 
         {/* Thumbnails (if multiple) */}
         {hasMultiple && resolvedUrls.length > 0 && !loading && (
-          <div className="flex items-center gap-2 p-3 border-t border-gray-200 overflow-x-auto bg-gray-50 shrink-0">
+          <div className="flex items-center gap-2 p-3 border-t overflow-x-auto bg-muted/50 shrink-0">
             {resolvedUrls.map((media, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentIndex(index)}
-                className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                className={`shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
                   index === currentIndex
-                    ? "border-blue-500 ring-2 ring-blue-200"
-                    : "border-gray-200 hover:border-gray-400"
-                }`}
+                    ? "border-primary ring-2 ring-primary/20"
+                    : "border-border hover:border-foreground/30"
+                } ${imageError[index] ? "opacity-50" : ""}`}
               >
-                {media.file_url ? (
+                {media.file_url && !imageError[index] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={media.file_url}
                     alt={`Thumbnail ${index + 1}`}
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = "none";
-                    }}
+                    onError={() => handleImageError(index)}
+                    crossOrigin="anonymous"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                    {media.media_url ? (
-                      <Video className="w-5 h-5 text-gray-400" />
+                  <div className="w-full h-full bg-muted flex items-center justify-center">
+                    {imageError[index] ? (
+                      <ImageOff className="w-4 h-4 text-muted-foreground" />
+                    ) : media.media_url ? (
+                      <Video className="w-4 h-4 text-muted-foreground" />
                     ) : (
-                      <ImageIcon className="w-5 h-5 text-gray-400" />
+                      <ImageIcon className="w-4 h-4 text-muted-foreground" />
                     )}
                   </div>
                 )}
@@ -316,54 +404,62 @@ export default function MediaPreviewModal({
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-white shrink-0">
-          <div className="flex items-center gap-3 text-sm text-gray-500">
-            {hasImage && (
-              <span className="flex items-center gap-1">
-                <ImageIcon className="w-4 h-4" />
-                Image
-              </span>
-            )}
-            {hasVideo && (
-              <span className="flex items-center gap-1">
-                <Video className="w-4 h-4" />
-                Video
-              </span>
-            )}
-          </div>
+        <DialogFooter className="p-4 pt-2 border-t shrink-0">
+          <div className="flex items-center justify-between w-full gap-4 flex-wrap">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              {hasImage && !currentImageError && (
+                <span className="flex items-center gap-1">
+                  <ImageIcon className="w-4 h-4" />
+                  Image
+                </span>
+              )}
+              {hasVideo && (
+                <span className="flex items-center gap-1">
+                  <Video className="w-4 h-4" />
+                  Video
+                </span>
+              )}
+              {urlExpired && (
+                <Badge variant="destructive" className="text-xs">
+                  URL Expired
+                </Badge>
+              )}
+            </div>
 
-          <div className="flex items-center gap-2">
-            {hasImage && currentMedia?.file_url && (
-              <a
-                href={currentMedia.file_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open Image
-              </a>
-            )}
-            {hasVideo && currentMedia?.media_url && (
-              <a
-                href={currentMedia.media_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 px-3 py-1.5 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open Video
-              </a>
-            )}
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Close
-            </button>
+            <div className="flex items-center gap-2">
+              {hasImage && currentMedia?.file_url && !currentImageError && (
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={currentMedia.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gap-1"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Image
+                  </a>
+                </Button>
+              )}
+              {hasVideo && currentMedia?.media_url && (
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={currentMedia.media_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gap-1"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Video
+                  </a>
+                </Button>
+              )}
+              <Button onClick={onClose} variant="secondary" size="sm">
+                Close
+              </Button>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

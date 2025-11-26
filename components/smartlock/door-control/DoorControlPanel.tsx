@@ -4,27 +4,68 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock,
   Unlock,
   ShieldAlert,
-  CheckCircle,
-  XCircle,
   Loader2,
   RefreshCw,
   Wifi,
   WifiOff,
   Battery,
   Clock,
+  AlertTriangle,
+  Key,
+  Shield,
+  Settings,
+  CheckCircle,
+  XCircle,
+  Zap,
+  Activity,
 } from "lucide-react";
 import {
   extractDeviceStatus,
   DeviceLockStatus,
 } from "@/lib/utils/device-status";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { RemoteUnlockMethod } from "@/lib/tuya/tuya-api-wrapper";
 
 interface DoorControlPanelProps {
   deviceId: string;
 }
+
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+    },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 },
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  remoteUnlockWithoutPwd: "Quick Unlock",
+  remoteUnlockWithPwd: "Password Unlock",
+};
+
+const METHOD_DESCRIPTIONS: Record<string, string> = {
+  remoteUnlockWithoutPwd: "One-tap unlock",
+  remoteUnlockWithPwd: "Requires password",
+};
 
 export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
   const [loading, setLoading] = useState<string | null>(null);
@@ -42,24 +83,24 @@ export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
     text: string;
   } | null>(null);
   const [password, setPassword] = useState("");
-  const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [fetchingStatus, setFetchingStatus] = useState(true);
+  const [remoteMethods, setRemoteMethods] = useState<RemoteUnlockMethod[]>([]);
+  const [updatingMethod, setUpdatingMethod] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDeviceStatus();
+    fetchRemoteMethods();
   }, [deviceId]);
 
   const fetchDeviceStatus = async () => {
     try {
       setFetchingStatus(true);
-
       const response = await fetch(
         `/api/smartlock/device/info?deviceId=${deviceId}`
       );
       const data = await response.json();
 
       if (data.success && data.data) {
-        // Use centralized utility to extract status
         const status = extractDeviceStatus(data.data);
         setDeviceStatus(status);
       }
@@ -70,14 +111,26 @@ export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
     }
   };
 
+  const fetchRemoteMethods = async () => {
+    try {
+      const response = await fetch(
+        `/api/smartlock/door-control/remote-methods?deviceId=${deviceId}`
+      );
+      const data = await response.json();
+      if (data.success) {
+        setRemoteMethods(data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching remote methods:", error);
+    }
+  };
+
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 5000);
   };
 
   const handleUnlock = async (withPassword: boolean = false) => {
-    if (!confirm("Are you sure you want to unlock the door?")) return;
-
     try {
       setLoading("unlock");
       setMessage(null);
@@ -99,7 +152,6 @@ export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
         setDeviceStatus((prev) => ({ ...prev, lockState: "unlocked" }));
         showMessage("success", "Unlock command sent successfully!");
         setPassword("");
-        setShowPasswordInput(false);
         setTimeout(fetchDeviceStatus, 2000);
       } else {
         showMessage("error", data.error || "Failed to unlock door");
@@ -112,8 +164,6 @@ export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
   };
 
   const handleLock = async () => {
-    if (!confirm("Are you sure you want to lock the door?")) return;
-
     try {
       setLoading("lock");
       setMessage(null);
@@ -141,10 +191,6 @@ export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
   };
 
   const handleRevoke = async (type: 1 | 2 = 1) => {
-    const typeLabel = type === 1 ? "reject" : "cancel";
-    if (!confirm(`Are you sure you want to ${typeLabel} the unlock request?`))
-      return;
-
     try {
       setLoading("revoke");
       setMessage(null);
@@ -158,272 +204,417 @@ export default function DoorControlPanel({ deviceId }: DoorControlPanelProps) {
       const data = await response.json();
 
       if (data.success) {
-        showMessage("success", "Password-free unlock revoked successfully!");
+        showMessage("success", "Request revoked successfully!");
       } else {
-        showMessage("error", data.error || "Failed to revoke unlock");
+        showMessage("error", data.error || "Failed to revoke");
       }
     } catch (error: any) {
-      showMessage("error", error.message || "Failed to revoke unlock");
+      showMessage("error", error.message);
     } finally {
       setLoading(null);
+    }
+  };
+
+  const handleToggleMethod = async (
+    remoteUnlockType: string,
+    currentState: boolean
+  ) => {
+    try {
+      setUpdatingMethod(remoteUnlockType);
+      const newState = !currentState;
+
+      const response = await fetch(
+        "/api/smartlock/door-control/remote-methods",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId,
+            remote_unlock_type: remoteUnlockType,
+            open: newState,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        const action = newState ? "enabled" : "disabled";
+        const methodName = METHOD_LABELS[remoteUnlockType] || remoteUnlockType;
+        showMessage("success", `${methodName} ${action}`);
+        await fetchRemoteMethods();
+      } else {
+        showMessage("error", data.error || "Failed to update");
+      }
+    } catch (error: any) {
+      showMessage("error", error.message);
+    } finally {
+      setUpdatingMethod(null);
     }
   };
 
   const { lockState, online, battery, isStale, timeAgo } = deviceStatus;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-8">
-      {/* Status Display */}
-      <div className="text-center mb-8">
-        <div
-          className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-4 ${
-            lockState === "locked"
-              ? "bg-red-100"
-              : lockState === "unlocked"
-              ? "bg-green-100"
-              : "bg-gray-100"
-          }`}
-        >
-          {fetchingStatus ? (
-            <Loader2 className="w-12 h-12 text-gray-400 animate-spin" />
-          ) : lockState === "locked" ? (
-            <Lock className="w-12 h-12 text-red-600" />
-          ) : lockState === "unlocked" ? (
-            <Unlock className="w-12 h-12 text-green-600" />
-          ) : (
-            <ShieldAlert className="w-12 h-12 text-gray-600" />
-          )}
-        </div>
-
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Door Control</h2>
-
-        {/* Status Badges */}
-        <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
-          {/* Lock Status */}
-          <span
-            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-              lockState === "locked"
-                ? "bg-red-100 text-red-700"
-                : lockState === "unlocked"
-                ? "bg-green-100 text-green-700"
-                : "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {lockState === "locked" ? (
-              <Lock className="w-4 h-4" />
-            ) : lockState === "unlocked" ? (
-              <Unlock className="w-4 h-4" />
-            ) : (
-              <ShieldAlert className="w-4 h-4" />
-            )}
-            {lockState === "locked"
-              ? "Locked"
-              : lockState === "unlocked"
-              ? "Unlocked"
-              : "Unknown"}
-          </span>
-
-          {/* Online Status */}
-          <span
-            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-              online ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-            }`}
-          >
-            {online ? (
-              <Wifi className="w-4 h-4" />
-            ) : (
-              <WifiOff className="w-4 h-4" />
-            )}
-            {online ? "Online" : "Offline"}
-          </span>
-
-          {/* Battery Status */}
-          {battery !== null && (
-            <span
-              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-                battery > 50
-                  ? "bg-green-100 text-green-700"
-                  : battery > 20
-                  ? "bg-yellow-100 text-yellow-700"
-                  : "bg-red-100 text-red-700"
-              }`}
-            >
-              <Battery className="w-4 h-4" />
-              {battery}%
-            </span>
-          )}
-
-          {/* Refresh Button */}
-          <button
-            onClick={fetchDeviceStatus}
-            disabled={fetchingStatus}
-            className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-            title="Refresh Status"
-          >
-            <RefreshCw
-              className={`w-4 h-4 ${fetchingStatus ? "animate-spin" : ""}`}
-            />
-          </button>
-        </div>
-
-        {/* Last Update Time */}
-        <div className="mt-3 flex items-center justify-center gap-1 text-xs text-gray-500">
-          <Clock className="w-3 h-3" />
-          <span>Last updated: {timeAgo}</span>
-          {isStale && (
-            <span className="text-yellow-600 font-medium">(Stale)</span>
-          )}
-        </div>
-      </div>
-
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="space-y-6"
+    >
       {/* Message Display */}
-      {message && (
-        <div
-          className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${
-            message.type === "error"
-              ? "bg-red-50 border border-red-200 text-red-700"
-              : "bg-green-50 border border-green-200 text-green-700"
-          }`}
-        >
-          {message.type === "success" ? (
-            <CheckCircle className="w-5 h-5 shrink-0" />
-          ) : (
-            <XCircle className="w-5 h-5 shrink-0" />
-          )}
-          <span>{message.text}</span>
-        </div>
-      )}
-
-      {/* Offline Warning */}
-      {!online && (
-        <div className="mb-6 p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-700">
-          <div className="flex items-center gap-2 font-medium">
-            <WifiOff className="w-5 h-5 shrink-0" />
-            <span>Device appears to be offline</span>
-          </div>
-          <p className="text-sm mt-1 ml-7">
-            {isStale
-              ? `Last communication was ${timeAgo}. Commands will be queued and executed when device reconnects.`
-              : "Remote operations may not work until the device reconnects."}
-          </p>
-        </div>
-      )}
-
-      {/* Password Input (Optional) */}
-      {showPasswordInput && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Enter Password (6 digits)
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              maxLength={6}
-              placeholder="Enter 6-digit password"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <button
-              onClick={() => {
-                setShowPasswordInput(false);
-                setPassword("");
-              }}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+      <AnimatePresence mode="wait">
+        {message && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <Alert
+              variant={message.type === "error" ? "destructive" : "default"}
+              className="flex items-center gap-2"
             >
-              Cancel
-            </button>
-          </div>
+              {message.type === "success" ? (
+                <CheckCircle className="h-4 w-4" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              <AlertDescription>{message.text}</AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Grid Layout */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Left Column - Status & Info */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Live Status */}
+          <motion.div variants={item}>
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Live Status</CardTitle>
+                  <Button
+                    onClick={fetchDeviceStatus}
+                    disabled={fetchingStatus}
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        fetchingStatus ? "animate-spin" : ""
+                      }`}
+                    />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-center py-6">
+                  <motion.div
+                    animate={{
+                      scale: fetchingStatus ? [1, 1.05, 1] : 1,
+                    }}
+                    transition={{
+                      repeat: fetchingStatus ? Infinity : 0,
+                      duration: 1.5,
+                    }}
+                    className={`relative inline-flex items-center justify-center w-24 h-24 rounded-full ${
+                      lockState === "locked"
+                        ? "bg-destructive/10"
+                        : lockState === "unlocked"
+                        ? "bg-green-500/10"
+                        : "bg-muted"
+                    }`}
+                  >
+                    {fetchingStatus ? (
+                      <Loader2 className="w-10 h-10 text-muted-foreground animate-spin" />
+                    ) : lockState === "locked" ? (
+                      <Lock className="w-10 h-10 text-destructive" />
+                    ) : lockState === "unlocked" ? (
+                      <Unlock className="w-10 h-10 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <ShieldAlert className="w-10 h-10 text-muted-foreground" />
+                    )}
+                    <div className="absolute -bottom-1 -right-1">
+                      <Badge
+                        variant={online ? "default" : "destructive"}
+                        className="h-6 w-6 rounded-full p-0 flex items-center justify-center"
+                      >
+                        {online ? (
+                          <Wifi className="h-3 w-3" />
+                        ) : (
+                          <WifiOff className="h-3 w-3" />
+                        )}
+                      </Badge>
+                    </div>
+                  </motion.div>
+                </div>
+
+                <div className="text-center space-y-1">
+                  <h3 className="text-xl font-bold">
+                    {lockState === "locked"
+                      ? "Locked"
+                      : lockState === "unlocked"
+                      ? "Unlocked"
+                      : "Unknown"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{timeAgo}</p>
+                  {isStale && (
+                    <Badge variant="outline" className="text-xs">
+                      Stale Data
+                    </Badge>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Connection</span>
+                    <Badge variant={online ? "default" : "secondary"}>
+                      {online ? "Online" : "Offline"}
+                    </Badge>
+                  </div>
+                  {battery !== null && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Battery</span>
+                      <div className="flex items-center gap-2">
+                        <Battery
+                          className={`h-4 w-4 ${
+                            battery > 50
+                              ? "text-green-600 dark:text-green-400"
+                              : battery > 20
+                              ? "text-yellow-600 dark:text-yellow-400"
+                              : "text-destructive"
+                          }`}
+                        />
+                        <span className="font-medium">{battery}%</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Offline Warning */}
+          {!online && (
+            <motion.div variants={item}>
+              <Alert>
+                <WifiOff className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  {isStale
+                    ? `Last seen ${timeAgo}. Commands will queue until reconnection.`
+                    : "Device offline. Commands may not execute."}
+                </AlertDescription>
+              </Alert>
+            </motion.div>
+          )}
+
+          {/* Remote Methods */}
+          <motion.div variants={item}>
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  <CardTitle className="text-base">Remote Methods</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {remoteMethods.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Settings className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground">
+                      No methods available
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {remoteMethods.map((method) => (
+                      <div
+                        key={method.remote_unlock_type}
+                        className="flex items-center justify-between p-3 rounded-lg border"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {METHOD_LABELS[method.remote_unlock_type] ||
+                              method.remote_unlock_type}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {METHOD_DESCRIPTIONS[method.remote_unlock_type]}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={method.open}
+                          onCheckedChange={() =>
+                            handleToggleMethod(
+                              method.remote_unlock_type,
+                              method.open
+                            )
+                          }
+                          disabled={
+                            updatingMethod === method.remote_unlock_type
+                          }
+                          className="ml-3"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
-      )}
 
-      {/* Main Control Buttons */}
-      <div className="grid grid-cols-2 gap-4">
-        <button
-          onClick={() =>
-            showPasswordInput ? handleUnlock(true) : handleUnlock(false)
-          }
-          disabled={!!loading}
-          className={`px-6 py-4 text-white rounded-lg transition-colors flex items-center justify-center gap-2 text-lg font-semibold ${
-            !online
-              ? "bg-green-400 hover:bg-green-500"
-              : "bg-green-600 hover:bg-green-700"
-          } disabled:bg-gray-400 disabled:cursor-not-allowed`}
-        >
-          {loading === "unlock" ? (
-            <Loader2 className="w-6 h-6 animate-spin" />
-          ) : (
-            <Unlock className="w-6 h-6" />
-          )}
-          {loading === "unlock" ? "Unlocking..." : "Unlock"}
-        </button>
+        {/* Right Column - Controls */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Quick Actions */}
+          <motion.div variants={item}>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  <CardTitle className="text-lg">Quick Actions</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Button
+                      onClick={() => handleUnlock(false)}
+                      disabled={!!loading}
+                      className="w-full h-24 flex-col gap-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800"
+                    >
+                      {loading === "unlock" ? (
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                      ) : (
+                        <Unlock className="h-8 w-8" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {loading === "unlock" ? "Unlocking..." : "Unlock"}
+                      </span>
+                    </Button>
+                  </motion.div>
 
-        <button
-          onClick={handleLock}
-          disabled={!!loading}
-          className={`px-6 py-4 text-white rounded-lg transition-colors flex items-center justify-center gap-2 text-lg font-semibold ${
-            !online
-              ? "bg-red-400 hover:bg-red-500"
-              : "bg-red-600 hover:bg-red-700"
-          } disabled:bg-gray-400 disabled:cursor-not-allowed`}
-        >
-          {loading === "lock" ? (
-            <Loader2 className="w-6 h-6 animate-spin" />
-          ) : (
-            <Lock className="w-6 h-6" />
-          )}
-          {loading === "lock" ? "Locking..." : "Lock"}
-        </button>
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Button
+                      onClick={handleLock}
+                      disabled={!!loading}
+                      variant="destructive"
+                      className="w-full h-24 flex-col gap-2"
+                    >
+                      {loading === "lock" ? (
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                      ) : (
+                        <Lock className="h-8 w-8" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {loading === "lock" ? "Locking..." : "Lock"}
+                      </span>
+                    </Button>
+                  </motion.div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Password Unlock */}
+          <motion.div variants={item}>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  <CardTitle className="text-lg">Password Unlock</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm">
+                    6-Digit Password
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      maxLength={6}
+                      placeholder="••••••"
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={() => handleUnlock(true)}
+                      disabled={!!loading || !password || password.length !== 6}
+                    >
+                      <Unlock className="w-4 h-4 mr-2" />
+                      Unlock
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Advanced Controls */}
+          <motion.div variants={item}>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  <CardTitle className="text-lg">Advanced Controls</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Button
+                    onClick={() => handleRevoke(1)}
+                    disabled={!!loading}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                  >
+                    {loading === "revoke" ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <XCircle className="w-4 h-4 mr-2" />
+                    )}
+                    Reject Request
+                  </Button>
+
+                  <Button
+                    onClick={() => handleRevoke(2)}
+                    disabled={!!loading}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Cancel Request
+                  </Button>
+                </div>
+
+                <Separator className="my-4" />
+
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Remote operations require internet connection. Always verify
+                    door status after commands.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       </div>
-
-      {/* Secondary Options */}
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={() => setShowPasswordInput(!showPasswordInput)}
-          disabled={!!loading}
-          className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
-        >
-          {showPasswordInput ? "Hide Password Input" : "Unlock with Password"}
-        </button>
-      </div>
-
-      {/* Revoke Buttons */}
-      <div className="mt-6 grid grid-cols-2 gap-2">
-        <button
-          onClick={() => handleRevoke(1)}
-          disabled={!!loading}
-          className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
-        >
-          {loading === "revoke" ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Revoking...
-            </span>
-          ) : (
-            "Reject Unlock Request"
-          )}
-        </button>
-
-        <button
-          onClick={() => handleRevoke(2)}
-          disabled={!!loading}
-          className="px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
-        >
-          Cancel Unlock Request
-        </button>
-      </div>
-
-      {/* Info Box */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-        <p className="font-semibold mb-1">⚠️ Important:</p>
-        <ul className="list-disc list-inside space-y-1">
-          <li>Remote unlock requires internet connection</li>
-          <li>Always verify door status after remote operations</li>
-          <li>Use responsibly and ensure authorized access only</li>
-          <li>Password must be 6 digits when using password unlock</li>
-          <li>Status may be delayed by up to 5 minutes</li>
-        </ul>
-      </div>
-    </div>
+    </motion.div>
   );
 }

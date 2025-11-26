@@ -4,10 +4,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserPlus, X, Loader2 } from "lucide-react";
+import { UserPlus, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { UnlockKey } from "@/lib/tuya/tuya-api-wrapper";
 
 interface DeviceUser {
@@ -34,7 +49,6 @@ export default function AssignMethodForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Fetch users on mount
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -46,10 +60,8 @@ export default function AssignMethodForm({
 
         if (data.success) {
           setUsers(data.data || []);
-          console.log("👥 Loaded users:", data.data.length);
         }
       } catch (error) {
-        console.error("❌ Error fetching users:", error);
         setError("Failed to load users");
       } finally {
         setLoadingUsers(false);
@@ -65,7 +77,6 @@ export default function AssignMethodForm({
     setError("");
 
     try {
-      // Convert unlock_type to dp_code format
       const dpCodeMap: Record<string, string> = {
         password: "unlock_password",
         fingerprint: "unlock_fingerprint",
@@ -79,12 +90,6 @@ export default function AssignMethodForm({
 
       const dpCode =
         dpCodeMap[method.unlock_type] || `unlock_${method.unlock_type}`;
-
-      console.log("🔗 Assigning method:", {
-        deviceId,
-        userId: selectedUserId,
-        unlockList: [{ dp_code: dpCode, unlock_sn: method.unlock_no }],
-      });
 
       const response = await fetch("/api/smartlock/unlock-methods/assign", {
         method: "POST",
@@ -104,13 +109,11 @@ export default function AssignMethodForm({
       const data = await response.json();
 
       if (data.success) {
-        console.log("✅ Method assigned successfully");
         onSuccess?.();
       } else {
         setError(data.error || "Failed to assign unlock method");
       }
     } catch (error: any) {
-      console.error("❌ Error assigning method:", error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -136,125 +139,104 @@ export default function AssignMethodForm({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-md">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">
-              Assign Unlock Method to User
-            </CardTitle>
-            <Button
-              onClick={onCancel}
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+    <Dialog open={true} onOpenChange={() => onCancel?.()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Assign Unlock Method to User</DialogTitle>
+          <DialogDescription>
+            Select a user to assign this unlock method to
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription className="text-sm">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="p-3 bg-muted rounded-lg space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Type:</span>
+              <span className="font-medium">
+                {getMethodTypeName(method.unlock_type)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Slot Number:</span>
+              <span className="font-mono font-medium">#{method.unlock_no}</span>
+            </div>
           </div>
-        </CardHeader>
 
-        <Separator className="bg-neutral-200" />
-
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-                {error}
-              </div>
-            )}
-
-            {/* Method Info (Read-only) */}
-            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-neutral-500">Type:</span>
-                <span className="font-medium text-neutral-900">
-                  {getMethodTypeName(method.unlock_type)}
+          <div className="space-y-2">
+            <Label htmlFor="user">
+              Assign to User <span className="text-destructive">*</span>
+            </Label>
+            {loadingUsers ? (
+              <div className="flex items-center gap-2 p-3 border rounded-lg">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">
+                  Loading users...
                 </span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-neutral-500">Slot Number:</span>
-                <span className="font-mono font-medium text-neutral-900">
-                  #{method.unlock_no}
-                </span>
-              </div>
-            </div>
-
-            {/* User Selection */}
-            <div>
-              <label className="block text-xs font-medium text-neutral-700 mb-1.5">
-                Assign to User <span className="text-red-500">*</span>
-              </label>
-              {loadingUsers ? (
-                <div className="flex items-center gap-2 p-3 border border-neutral-300 rounded-lg">
-                  <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />
-                  <span className="text-sm text-neutral-500">
-                    Loading users...
-                  </span>
-                </div>
-              ) : users.length === 0 ? (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-xs text-yellow-700">
-                    No users found. Please create a user first.
-                  </p>
-                </div>
-              ) : (
-                <select
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                  required
-                >
-                  <option value="">-- Select a user --</option>
+            ) : users.length === 0 ? (
+              <Alert>
+                <AlertDescription className="text-sm">
+                  No users found. Please create a user first.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="-- Select a user --" />
+                </SelectTrigger>
+                <SelectContent>
                   {users.map((user) => (
-                    <option key={user.user_id} value={user.user_id}>
+                    <SelectItem key={user.user_id} value={user.user_id}>
                       {user.nick_name} (ID: {user.user_id})
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-xs">
+              This will assign the unlock method to the selected user. Make sure
+              the method was already enrolled on the physical device.
+            </AlertDescription>
+          </Alert>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={onCancel}
+              variant="outline"
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={loading || loadingUsers || users.length === 0}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Assign Method
+                </>
               )}
-            </div>
-
-            {/* Info Banner */}
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs text-blue-700">
-                ℹ️ This will assign the unlock method to the selected user. Make
-                sure the method was already enrolled on the physical device.
-              </p>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                onClick={onCancel}
-                variant="outline"
-                className="flex-1"
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={loading || loadingUsers || users.length === 0}
-                className="flex-1 bg-neutral-900 hover:bg-neutral-800"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Assigning...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Assign Method
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

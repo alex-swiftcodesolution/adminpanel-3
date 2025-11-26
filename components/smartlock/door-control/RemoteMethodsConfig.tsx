@@ -4,17 +4,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { RemoteUnlockMethod } from "@/lib/tuya/tuya-api-wrapper";
 import {
   Settings,
-  ToggleLeft,
-  ToggleRight,
   RefreshCw,
-  AlertCircle,
   WifiOff,
   CheckCircle,
+  AlertCircle,
 } from "lucide-react";
-import { calculateOnlineStatus } from "@/lib/utils/device-status";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 
 interface RemoteMethodsConfigProps {
   deviceId: string;
@@ -29,6 +33,11 @@ const METHOD_DESCRIPTIONS: Record<string, string> = {
   remoteUnlockWithoutPwd:
     "One-click remote unlock without password verification",
   remoteUnlockWithPwd: "Requires password confirmation before unlocking",
+};
+
+const item = {
+  hidden: { opacity: 0, x: -20 },
+  show: { opacity: 1, x: 0 },
 };
 
 export default function RemoteMethodsConfig({
@@ -54,7 +63,6 @@ export default function RemoteMethodsConfig({
       const data = await response.json();
 
       if (data.success && data.data) {
-        // Use centralized utility - online is already calculated by API
         setIsOnline(data.data.online || false);
       }
     } catch (err) {
@@ -78,7 +86,6 @@ export default function RemoteMethodsConfig({
         setError(data.error || "Failed to fetch remote methods");
       }
     } catch (err: any) {
-      console.error("Error fetching remote methods:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -129,7 +136,6 @@ export default function RemoteMethodsConfig({
         setError(data.error || "Failed to update setting");
       }
     } catch (err: any) {
-      console.error("Error toggling method:", err);
       setError(err.message);
     } finally {
       setUpdating(null);
@@ -138,148 +144,147 @@ export default function RemoteMethodsConfig({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="flex justify-center items-center py-12">
+          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Settings className="w-6 h-6 text-gray-600" />
-          <h3 className="text-lg font-semibold text-gray-900">
-            Remote Unlock Methods
-          </h3>
+    <Card className="h-fit">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            <CardTitle className="text-lg">Remote Unlock Methods</CardTitle>
+          </div>
+          <Button
+            onClick={() => {
+              fetchMethods();
+              fetchDeviceStatus();
+            }}
+            disabled={loading}
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
-        <button
-          onClick={() => {
-            fetchMethods();
-            fetchDeviceStatus();
-          }}
-          disabled={loading}
-          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-          title="Refresh"
-        >
-          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
+      </CardHeader>
 
-      {/* Offline Warning */}
-      {!isOnline && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg text-sm flex items-center gap-2">
-          <WifiOff className="w-4 h-4 shrink-0" />
-          <span>
-            Device is offline. Changes will apply when device reconnects.
-          </span>
-        </div>
-      )}
+      <CardContent>
+        {/* Offline Warning */}
+        {!isOnline && (
+          <Alert className="mb-4">
+            <WifiOff className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              Device is offline. Changes will apply when device reconnects.
+            </AlertDescription>
+          </Alert>
+        )}
 
-      {/* Error Display */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+        {/* Error Display */}
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-sm">{error}</AlertDescription>
+          </Alert>
+        )}
 
-      {/* Success Display */}
-      {success && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
+        {/* Success Display */}
+        {success && (
+          <Alert className="mb-4">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription className="text-sm">{success}</AlertDescription>
+          </Alert>
+        )}
 
-      {/* Methods List */}
-      {methods.length === 0 ? (
-        <div className="text-center py-8">
-          <Settings className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">No remote unlock methods available</p>
-          <p className="text-gray-400 text-sm mt-1">
-            This device may not support remote unlocking
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {methods.map((method, index) => (
-            <div
-              key={method.remote_unlock_type || index}
-              className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
-                !isOnline
-                  ? "bg-gray-100 opacity-75"
-                  : "bg-gray-50 hover:bg-gray-100"
-              }`}
-            >
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-900">
-                  {METHOD_LABELS[method.remote_unlock_type] ||
-                    method.remote_unlock_type}
-                </h4>
-                <p className="text-sm text-gray-500 mt-1">
-                  {METHOD_DESCRIPTIONS[method.remote_unlock_type] ||
-                    `Type: ${method.remote_unlock_type}`}
-                </p>
-                <p className="text-xs mt-1">
-                  Status:{" "}
-                  <span
-                    className={`font-medium ${
-                      method.open ? "text-green-600" : "text-gray-400"
-                    }`}
-                  >
-                    {method.open ? "Enabled" : "Disabled"}
-                  </span>
-                </p>
-              </div>
-
-              <button
-                onClick={() =>
-                  handleToggle(method.remote_unlock_type, method.open)
-                }
-                disabled={updating === method.remote_unlock_type}
-                className={`p-2 rounded-lg transition-colors ml-4 ${
-                  method.open
-                    ? "text-green-600 hover:bg-green-50"
-                    : "text-gray-400 hover:bg-gray-200"
-                } ${
-                  updating === method.remote_unlock_type
-                    ? "opacity-50 cursor-not-allowed"
-                    : ""
-                }`}
-                title={method.open ? "Disable" : "Enable"}
+        {/* Methods List */}
+        {methods.length === 0 ? (
+          <div className="text-center py-8">
+            <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">
+              No remote unlock methods available
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              This device may not support remote unlocking
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {methods.map((method, index) => (
+              <motion.div
+                key={method.remote_unlock_type || index}
+                variants={item}
+                initial="hidden"
+                animate="show"
+                transition={{ delay: index * 0.1 }}
               >
-                {updating === method.remote_unlock_type ? (
-                  <RefreshCw className="w-8 h-8 animate-spin" />
-                ) : method.open ? (
-                  <ToggleRight className="w-8 h-8" />
-                ) : (
-                  <ToggleLeft className="w-8 h-8" />
-                )}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+                <div
+                  className={`flex items-start justify-between p-4 rounded-lg border transition-colors ${
+                    !isOnline ? "opacity-75" : ""
+                  }`}
+                >
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-sm font-medium">
+                      {METHOD_LABELS[method.remote_unlock_type] ||
+                        method.remote_unlock_type}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {METHOD_DESCRIPTIONS[method.remote_unlock_type] ||
+                        `Type: ${method.remote_unlock_type}`}
+                    </p>
+                    <p className="text-xs">
+                      Status:{" "}
+                      <span
+                        className={`font-medium ${
+                          method.open
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {method.open ? "Enabled" : "Disabled"}
+                      </span>
+                    </p>
+                  </div>
 
-      {/* Info Box */}
-      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-        <p className="font-medium mb-2">ℹ️ About Remote Unlock Methods:</p>
-        <ul className="space-y-1 list-disc list-inside">
-          <li>
-            <strong>With Password:</strong> More secure, requires password
-            verification
-          </li>
-          <li>
-            <strong>Without Password:</strong> Convenient one-click unlock
-          </li>
-          <li>Enable only the methods you need for security</li>
-          <li>Changes require device to be online to take effect</li>
-        </ul>
-      </div>
-    </div>
+                  <Switch
+                    checked={method.open}
+                    onCheckedChange={() =>
+                      handleToggle(method.remote_unlock_type, method.open)
+                    }
+                    disabled={updating === method.remote_unlock_type}
+                    className="ml-4"
+                  />
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        <Separator className="my-4" />
+
+        {/* Info Box */}
+        <Alert>
+          <AlertTitle className="text-sm">
+            About Remote Unlock Methods
+          </AlertTitle>
+          <AlertDescription className="text-xs space-y-1 mt-2">
+            <p>
+              <strong>With Password:</strong> More secure, requires password
+              verification
+            </p>
+            <p>
+              <strong>Without Password:</strong> Convenient one-click unlock
+            </p>
+            <p>• Enable only the methods you need for security</p>
+            <p>• Changes require device to be online to take effect</p>
+          </AlertDescription>
+        </Alert>
+      </CardContent>
+    </Card>
   );
 }

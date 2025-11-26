@@ -2,9 +2,10 @@
 
 "use client";
 
+import { motion } from "framer-motion";
 import DoorControlPanel from "@/components/smartlock/door-control/DoorControlPanel";
-import RemoteMethodsConfig from "@/components/smartlock/door-control/RemoteMethodsConfig";
 import { DoorOpen } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { use } from "react";
 
 interface PageProps {
@@ -15,32 +16,33 @@ export default function DoorControlPage({ params }: PageProps) {
   const { deviceId } = use(params);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-indigo-100 rounded-lg">
-            <DoorOpen className="w-8 h-8 text-indigo-600" />
-          </div>
+    <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        <div className="flex items-start gap-3">
+          <motion.div
+            whileHover={{ rotate: [0, -10, 10, -10, 0] }}
+            transition={{ duration: 0.5 }}
+            className="p-3 bg-muted rounded-lg"
+          >
+            <DoorOpen className="w-6 h-6 md:w-7 md:h-7" />
+          </motion.div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Door Control</h1>
-            <p className="text-gray-500">Device ID: {deviceId}</p>
+            <h1 className="text-2xl md:text-3xl font-bold">Door Control</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Remote lock and unlock operations
+            </p>
           </div>
         </div>
+        <Separator />
+      </motion.div>
 
-        {/* Two-column layout */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left column - Control Panel */}
-          <div>
-            <DoorControlPanel deviceId={deviceId} />
-          </div>
-
-          {/* Right column - Remote Methods Config */}
-          <div>
-            <RemoteMethodsConfig deviceId={deviceId} />
-          </div>
-        </div>
-      </div>
+      {/* Control Panel */}
+      <DoorControlPanel deviceId={deviceId} />
     </div>
   );
 }

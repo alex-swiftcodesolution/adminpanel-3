@@ -4,6 +4,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { AlarmLogItem, MediaInfoItem } from "@/lib/tuya/tuya-api-wrapper";
 import { ALARM_TYPE_MAP, ALARM_VALUE_MAP } from "@/lib/tuya/constants";
 import {
@@ -17,7 +18,19 @@ import {
   Bell,
   ShieldAlert,
   User,
+  Loader2,
 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import MediaPreviewModal from "./MediaPreviewModal";
 
 interface AlarmHistoryListProps {
@@ -33,9 +46,24 @@ interface PaginatedResponse {
 }
 
 const ALARM_ICONS: Record<string, React.ReactNode> = {
-  hijack: <ShieldAlert className="w-5 h-5" />,
-  alarm_lock: <AlertTriangle className="w-5 h-5" />,
-  doorbell: <Bell className="w-5 h-5" />,
+  hijack: <ShieldAlert className="w-4 h-4" />,
+  alarm_lock: <AlertTriangle className="w-4 h-4" />,
+  doorbell: <Bell className="w-4 h-4" />,
+};
+
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+    },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 },
 };
 
 export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
@@ -49,6 +77,7 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [alarmFilter, setAlarmFilter] = useState<string>("all");
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
 
   // Media Modal State
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
@@ -89,6 +118,7 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
 
       if (result.success) {
         setData(result.data);
+        setLastRefreshTime(new Date());
       } else {
         setError(result.error || "Failed to fetch records");
       }
@@ -121,12 +151,20 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
     return new Date(ts).toLocaleString();
   };
 
+  const formatTimeAgo = (date: Date) => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    return date.toLocaleTimeString();
+  };
+
   const getAlarmInfo = (code: string) => {
     const info = ALARM_TYPE_MAP[code];
     return {
       name: info?.name || code,
       severity: info?.severity || ("medium" as const),
-      icon: ALARM_ICONS[code] || <AlertTriangle className="w-5 h-5" />,
+      icon: ALARM_ICONS[code] || <AlertTriangle className="w-4 h-4" />,
     };
   };
 
@@ -149,199 +187,248 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
     setMediaModalOpen(true);
   };
 
-  const severityColors = {
-    high: "border-red-300 bg-red-50 text-red-800",
-    medium: "border-orange-300 bg-orange-50 text-orange-800",
-    low: "border-yellow-300 bg-yellow-50 text-yellow-800",
-  };
-
-  const severityBadgeColors = {
-    high: "bg-red-200 text-red-800",
-    medium: "bg-orange-200 text-orange-800",
-    low: "bg-yellow-200 text-yellow-800",
+  const getSeverityVariant = (severity: string) => {
+    switch (severity) {
+      case "high":
+        return "destructive";
+      case "medium":
+        return "default";
+      case "low":
+        return "secondary";
+      default:
+        return "outline";
+    }
   };
 
   const totalPages = Math.ceil(data.total / data.page_size);
 
+  if (loading && data.records.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Header + Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-2xl font-bold text-gray-900">Alarm History</h2>
-          <span className="px-2 py-1 bg-red-100 text-red-700 text-sm rounded-full">
-            {data.total} records
-          </span>
-        </div>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Alarm History
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Last updated: {formatTimeAgo(lastRefreshTime)}
+              </p>
+            </div>
 
-        <div className="flex items-center gap-2">
-          <select
-            value={alarmFilter}
-            onChange={(e) => setAlarmFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="all">All Alarms</option>
-            <option value="alarm_lock">Lock Alarms</option>
-            <option value="hijack">Duress Alarms</option>
-            <option value="doorbell">Doorbell</option>
-          </select>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Badge variant="outline" className="font-normal">
+                {data.total} records
+              </Badge>
 
-          <button
-            onClick={() => fetchRecords(data.page_no)}
-            disabled={loading}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </div>
+              <Select value={alarmFilter} onValueChange={setAlarmFilter}>
+                <SelectTrigger className="w-[140px] h-8">
+                  <SelectValue placeholder="Filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Alarms</SelectItem>
+                  <SelectItem value="alarm_lock">Lock Alarms</SelectItem>
+                  <SelectItem value="hijack">Duress Alarms</SelectItem>
+                  <SelectItem value="doorbell">Doorbell</SelectItem>
+                </SelectContent>
+              </Select>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-yellow-800">
-            <AlertCircle className="w-5 h-5" />
-            <p className="text-sm">
-              Unable to load alarm history. This may be a new device with no
-              alarm events yet.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!loading && data.records.length === 0 && !error && (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-          <p className="text-gray-500">No alarm records found</p>
-          <p className="text-gray-400 text-sm mt-1">
-            Alarm events will appear here when they occur
-          </p>
-        </div>
-      )}
-
-      {/* Records List */}
-      {!loading && data.records.length > 0 && (
-        <div className="space-y-3">
-          {data.records.map((record, index) => {
-            const statusItem = Array.isArray(record.status)
-              ? record.status[0]
-              : record.status;
-            const alarmInfo = getAlarmInfo(statusItem?.code || "alarm_lock");
-            const hasMedia =
-              record.media_infos && record.media_infos.length > 0;
-
-            return (
-              <div
-                key={`${record.update_time}-${index}`}
-                className={`rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow ${
-                  severityColors[alarmInfo.severity]
-                }`}
+              <Button
+                onClick={() => fetchRecords(data.page_no)}
+                disabled={loading}
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span
-                        className={`p-1.5 rounded-lg ${
-                          severityBadgeColors[alarmInfo.severity]
-                        }`}
-                      >
-                        {alarmInfo.icon}
-                      </span>
-                      <h3 className="font-semibold">{alarmInfo.name}</h3>
-                      <span
-                        className={`px-2 py-1 text-xs rounded-full ${
-                          severityBadgeColors[alarmInfo.severity]
-                        }`}
-                      >
-                        {alarmInfo.severity.toUpperCase()}
-                      </span>
-                      {hasMedia && (
-                        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
-                          📷 {record.media_infos!.length} media
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="space-y-1 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        <span>{formatDate(record.update_time)}</span>
-                      </div>
-
-                      {statusItem?.value && (
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4" />
-                          <span>{getAlarmMessage(statusItem.value)}</span>
-                        </div>
-                      )}
-
-                      {record.nick_name && (
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4" />
-                          <span>{record.nick_name}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Media Button */}
-                  {hasMedia && (
-                    <button
-                      onClick={() => handleOpenMediaModal(record)}
-                      className="ml-4 flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
-                    >
-                      <ImageIcon className="w-4 h-4" />
-                      View Media
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {!loading && data.total > data.page_size && (
-        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Showing {(data.page_no - 1) * data.page_size + 1} -{" "}
-            {Math.min(data.page_no * data.page_size, data.total)} of{" "}
-            {data.total}
-          </p>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => fetchRecords(data.page_no - 1)}
-              disabled={data.page_no <= 1 || loading}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            <span className="px-3 py-1 text-sm text-gray-600">
-              Page {data.page_no} of {totalPages}
-            </span>
-
-            <button
-              onClick={() => fetchRecords(data.page_no + 1)}
-              disabled={!data.has_more || loading}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                />
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {/* Error */}
+          {error && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                Unable to load alarm history. This may be a new device with no
+                alarm events yet.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Empty State */}
+          <AnimatePresence mode="wait">
+            {!loading && data.records.length === 0 && !error && (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-center py-12"
+              >
+                <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No alarm records found</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Alarm events will appear here when they occur
+                </p>
+              </motion.div>
+            )}
+
+            {/* Records List */}
+            {!loading && data.records.length > 0 && (
+              <motion.div
+                key="list"
+                variants={container}
+                initial="hidden"
+                animate="show"
+                className="space-y-3"
+              >
+                {data.records.map((record, index) => {
+                  const statusItem = Array.isArray(record.status)
+                    ? record.status[0]
+                    : record.status;
+                  const alarmInfo = getAlarmInfo(
+                    statusItem?.code || "alarm_lock"
+                  );
+                  const hasMedia =
+                    record.media_infos && record.media_infos.length > 0;
+
+                  return (
+                    <motion.div
+                      key={`${record.update_time}-${index}`}
+                      variants={item}
+                      whileHover={{ scale: 1.01 }}
+                      className={`p-4 rounded-lg border transition-all hover:border-foreground/20 ${
+                        alarmInfo.severity === "high"
+                          ? "border-destructive/30 bg-destructive/5"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div className="flex-1 space-y-3">
+                          {/* Header */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`p-1.5 rounded-lg ${
+                                alarmInfo.severity === "high"
+                                  ? "bg-destructive/10 text-destructive"
+                                  : alarmInfo.severity === "medium"
+                                  ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {alarmInfo.icon}
+                            </span>
+                            <h3 className="font-semibold">{alarmInfo.name}</h3>
+                            <Badge
+                              variant={getSeverityVariant(alarmInfo.severity)}
+                            >
+                              {alarmInfo.severity.toUpperCase()}
+                            </Badge>
+                            {hasMedia && (
+                              <Badge variant="outline" className="gap-1">
+                                <ImageIcon className="w-3 h-3" />
+                                {record.media_infos!.length} media
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Details */}
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-3 h-3" />
+                              <span>{formatDate(record.update_time)}</span>
+                            </div>
+
+                            {statusItem?.value && (
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-3 h-3" />
+                                <span>{getAlarmMessage(statusItem.value)}</span>
+                              </div>
+                            )}
+
+                            {record.nick_name && (
+                              <div className="flex items-center gap-2">
+                                <User className="w-3 h-3" />
+                                <span>{record.nick_name}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Media Button */}
+                        {hasMedia && (
+                          <Button
+                            onClick={() => handleOpenMediaModal(record)}
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                          >
+                            <ImageIcon className="w-4 h-4" />
+                            View Media
+                          </Button>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Pagination */}
+          {!loading && data.total > data.page_size && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <p className="text-sm text-muted-foreground">
+                Showing {(data.page_no - 1) * data.page_size + 1} -{" "}
+                {Math.min(data.page_no * data.page_size, data.total)} of{" "}
+                {data.total}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => fetchRecords(data.page_no - 1)}
+                  disabled={data.page_no <= 1 || loading}
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+
+                <span className="text-sm text-muted-foreground px-2">
+                  Page {data.page_no} of {totalPages}
+                </span>
+
+                <Button
+                  onClick={() => fetchRecords(data.page_no + 1)}
+                  disabled={!data.has_more || loading}
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Media Preview Modal */}
       <MediaPreviewModal
@@ -355,6 +442,6 @@ export default function AlarmHistoryList({ deviceId }: AlarmHistoryListProps) {
         timestamp={selectedMedia?.timestamp}
         title={selectedMedia?.title}
       />
-    </div>
+    </>
   );
 }

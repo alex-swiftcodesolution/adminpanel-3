@@ -3,6 +3,7 @@
 "use client";
 
 import { use, useState, useRef } from "react";
+import { motion } from "framer-motion";
 import UserList, {
   UserListHandle,
 } from "@/components/smartlock/users/UserList";
@@ -10,6 +11,7 @@ import CreateUserForm from "@/components/smartlock/users/CreateUserForm";
 import EditUserModal from "@/components/smartlock/users/EditUserModal";
 import { Users, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 
 interface DeviceUser {
   user_id: string;
@@ -43,36 +45,54 @@ export default function UsersPage({ params }: UsersPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50/50 p-6 lg:p-8 space-y-8">
+    <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-neutral-100 rounded-lg">
-            <Users className="w-8 h-8 text-neutral-900" />
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <motion.div
+              whileHover={{ rotate: [0, -10, 10, -10, 0] }}
+              transition={{ duration: 0.5 }}
+              className="p-3 bg-muted rounded-lg"
+            >
+              <Users className="w-6 h-6 md:w-7 md:h-7" />
+            </motion.div>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                User Management
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Manage device users and their access
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              User Management
-            </h1>
-            <p className="text-sm text-neutral-500">
-              Manage device users and their access
-            </p>
-          </div>
-        </div>
 
-        <Button
-          onClick={() => setShowCreateForm(true)}
-          className="bg-neutral-900 hover:bg-neutral-800"
-        >
-          <UserPlus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
-      </div>
+          <Button onClick={() => setShowCreateForm(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add User
+          </Button>
+        </div>
+        <Separator />
+      </motion.div>
 
       {/* User List */}
-      <UserList deviceId={deviceId} onEdit={setEditingUser} ref={userListRef} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <UserList
+          deviceId={deviceId}
+          onEdit={setEditingUser}
+          ref={userListRef}
+        />
+      </motion.div>
 
-      {/* Create User Modal */}
+      {/* Create User Dialog */}
       {showCreateForm && (
         <CreateUserForm
           deviceId={deviceId}
@@ -81,7 +101,7 @@ export default function UsersPage({ params }: UsersPageProps) {
         />
       )}
 
-      {/* Edit User Modal */}
+      {/* Edit User Dialog */}
       {editingUser && (
         <EditUserModal
           deviceId={deviceId}

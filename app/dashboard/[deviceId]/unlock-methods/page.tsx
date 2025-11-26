@@ -4,16 +4,16 @@
 "use client";
 
 import { use, useState, useRef } from "react";
+import { motion } from "framer-motion";
 import UnlockMethodsList, {
   UnlockMethodsListHandle,
 } from "@/components/smartlock/unlock-methods/UnlockMethodsList";
 import AssignMethodForm from "@/components/smartlock/unlock-methods/AssignMethodForm";
 import EditUnlockMethodModal from "@/components/smartlock/unlock-methods/EditUnlockMethodModal";
 import MethodSettingsModal from "@/components/smartlock/unlock-methods/MethodSettingsModal";
-import { Key, Info, Radio } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import Link from "next/link";
+import { Key, Info } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import UnlockMethodsSummary from "@/components/smartlock/unlock-methods/UnlockMethodsSummary";
 
 interface PageProps {
@@ -49,66 +49,83 @@ export default function UnlockMethodsPage({ params }: PageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50/50 p-6 lg:p-8 space-y-8">
+    <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-neutral-100 rounded-lg">
-            <Key className="w-8 h-8 text-neutral-900" />
-          </div>
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        <div className="flex items-start gap-3">
+          <motion.div
+            whileHover={{ rotate: [0, -10, 10, -10, 0] }}
+            transition={{ duration: 0.5 }}
+            className="p-3 bg-muted rounded-lg"
+          >
+            <Key className="w-6 h-6 md:w-7 md:h-7" />
+          </motion.div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              Unlock Methods
-            </h1>
-            <p className="text-sm text-neutral-500">
+            <h1 className="text-2xl md:text-3xl font-bold">Unlock Methods</h1>
+            <p className="text-sm text-muted-foreground mt-1">
               Manage unlock methods and assignments
             </p>
           </div>
         </div>
-
-        {/* <Link href={`/dashboard/${deviceId}/unlock-methods/remote-settings`}>
-          <Button variant="outline" className="gap-2">
-            <Radio className="h-4 w-4" />
-            Remote Settings
-          </Button>
-        </Link> */}
-      </div>
+        <Separator />
+      </motion.div>
 
       {/* Info Banner */}
-      <Card className="border-blue-200 bg-blue-50/50">
-        <CardContent className="p-4 flex items-start gap-3">
-          <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-blue-900">
-              How to Add Unlock Methods
-            </p>
-            <p className="text-xs text-blue-700 mt-1">
-              1. <strong>Enroll on the device:</strong> Register fingerprint,
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>How to Add Unlock Methods</AlertTitle>
+          <AlertDescription className="text-xs space-y-1 mt-2">
+            <p>
+              <strong>1. Enroll on the device:</strong> Register fingerprint,
               card, or password directly on the lock.
-              <br />
-              2. <strong>Method appears here:</strong> It will show as
+            </p>
+            <p>
+              <strong>2. Method appears here:</strong> It will show as
               &quot;unassigned&quot; in the list below.
-              <br />
-              3. <strong>Assign to user:</strong> Click &quot;Assign&quot; to
+            </p>
+            <p>
+              <strong>3. Assign to user:</strong> Click &quot;Assign&quot; to
               link it to a user account.
             </p>
-          </div>
-        </CardContent>
-      </Card>
+          </AlertDescription>
+        </Alert>
+      </motion.div>
 
-      <UnlockMethodsSummary deviceId={deviceId} />
+      {/* Summary */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <UnlockMethodsSummary deviceId={deviceId} />
+      </motion.div>
 
       {/* Methods List */}
-      <UnlockMethodsList
-        deviceId={deviceId}
-        ref={listRef}
-        onAssign={setAssigningMethod}
-        onEdit={setEditingMethod}
-        onSettings={setSettingsMethod}
-        onDelete={handleMethodDeleted}
-      />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <UnlockMethodsList
+          deviceId={deviceId}
+          ref={listRef}
+          onAssign={setAssigningMethod}
+          onEdit={setEditingMethod}
+          onSettings={setSettingsMethod}
+          onDelete={handleMethodDeleted}
+        />
+      </motion.div>
 
-      {/* Assign Method Modal */}
+      {/* Modals */}
       {assigningMethod && (
         <AssignMethodForm
           deviceId={deviceId}
@@ -118,7 +135,6 @@ export default function UnlockMethodsPage({ params }: PageProps) {
         />
       )}
 
-      {/* Edit Method Modal */}
       {editingMethod && (
         <EditUnlockMethodModal
           deviceId={deviceId}
@@ -128,7 +144,6 @@ export default function UnlockMethodsPage({ params }: PageProps) {
         />
       )}
 
-      {/* Settings Modal */}
       {settingsMethod && (
         <MethodSettingsModal
           deviceId={deviceId}

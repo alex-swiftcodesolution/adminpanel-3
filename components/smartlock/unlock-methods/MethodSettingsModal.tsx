@@ -4,10 +4,19 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, X, Camera, Mic, Shield } from "lucide-react";
+import { Settings, Camera, Mic, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface MethodSettingsModalProps {
   deviceId: string;
@@ -35,7 +44,6 @@ export default function MethodSettingsModal({
       setLoading(true);
       setError("");
 
-      // Update photo capture attribute
       if (settings.photoCapture !== (method.photo_unlock === 2)) {
         await fetch(
           `/api/smartlock/unlock-methods/${method.unlock_sn}/attributes`,
@@ -44,14 +52,13 @@ export default function MethodSettingsModal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               deviceId,
-              attribute: 2, // Photo capture
+              attribute: 2,
               enabled: settings.photoCapture,
             }),
           }
         );
       }
 
-      // Update unlock method with duress settings
       const response = await fetch(
         `/api/smartlock/unlock-methods/${method.unlock_sn}`,
         {
@@ -68,13 +75,11 @@ export default function MethodSettingsModal({
       const data = await response.json();
 
       if (data.success) {
-        console.log("✅ Settings updated successfully");
         onSuccess?.();
       } else {
         setError(data.error || "Failed to update settings");
       }
     } catch (error: any) {
-      console.error("❌ Error updating settings:", error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -82,150 +87,107 @@ export default function MethodSettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-md">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">
-              Method Settings
-            </CardTitle>
-            <Button
-              onClick={onCancel}
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
+    <Dialog open={true} onOpenChange={() => onCancel?.()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Method Settings</DialogTitle>
+          <DialogDescription>
+            Configure security settings for {method.unlock_name}
+          </DialogDescription>
+        </DialogHeader>
 
-        <Separator className="bg-neutral-200" />
-
-        <CardContent className="pt-6 space-y-6">
+        <div className="space-y-6">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-              {error}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription className="text-sm">{error}</AlertDescription>
+            </Alert>
           )}
 
-          {/* Method Info */}
-          <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg">
-            <p className="text-sm font-medium text-neutral-900">
-              {method.unlock_name}
+          <div className="p-3 bg-muted rounded-lg">
+            <p className="text-sm font-medium">{method.unlock_name}</p>
+            <p className="text-xs text-muted-foreground">
+              SN: {method.unlock_sn}
             </p>
-            <p className="text-xs text-neutral-500">SN: {method.unlock_sn}</p>
           </div>
 
-          {/* Photo Capture Setting */}
-          <div className="flex items-start gap-3 p-4 border border-neutral-200 rounded-lg">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Camera className="h-5 w-5 text-blue-600" />
+          <div className="flex items-start gap-3 p-4 border rounded-lg">
+            <div className="p-2 bg-muted rounded-lg">
+              <Camera className="h-5 w-5" />
             </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-1">
-                <h4 className="text-sm font-medium text-neutral-900">
-                  Photo Capture
-                </h4>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.photoCapture}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        photoCapture: e.target.checked,
-                      })
-                    }
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="photoCapture" className="text-sm font-medium">
+                    Photo Capture
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Capture photo when this method is used
+                  </p>
+                </div>
+                <Switch
+                  id="photoCapture"
+                  checked={settings.photoCapture}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, photoCapture: checked })
+                  }
+                />
               </div>
-              <p className="text-xs text-neutral-500">
-                Capture photo when this method is used to unlock
-              </p>
             </div>
           </div>
 
-          {/* Voice Control Setting */}
-          <div className="flex items-start gap-3 p-4 border border-neutral-200 rounded-lg opacity-50">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Mic className="h-5 w-5 text-green-600" />
+          <div className="flex items-start gap-3 p-4 border rounded-lg opacity-50">
+            <div className="p-2 bg-muted rounded-lg">
+              <Mic className="h-5 w-5" />
             </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-1">
-                <h4 className="text-sm font-medium text-neutral-900">
-                  Voice Control
-                </h4>
-                <label className="relative inline-flex items-center cursor-not-allowed">
-                  <input
-                    type="checkbox"
-                    checked={settings.voiceControl}
-                    disabled
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-neutral-200 rounded-full"></div>
-                </label>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Voice Control</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Voice control settings (read-only)
+                  </p>
+                </div>
+                <Switch checked={settings.voiceControl} disabled />
               </div>
-              <p className="text-xs text-neutral-500">
-                Voice control settings (read-only)
-              </p>
             </div>
           </div>
 
-          {/* Duress Alarm Setting */}
-          <div className="flex items-start gap-3 p-4 border border-neutral-200 rounded-lg">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <Shield className="h-5 w-5 text-red-600" />
+          <div className="flex items-start gap-3 p-4 border rounded-lg">
+            <div className="p-2 bg-muted rounded-lg">
+              <Shield className="h-5 w-5" />
             </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-1">
-                <h4 className="text-sm font-medium text-neutral-900">
-                  Duress Alarm
-                </h4>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.duressAlarm}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        duressAlarm: e.target.checked,
-                      })
-                    }
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
-                </label>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="duressAlarm" className="text-sm font-medium">
+                    Duress Alarm
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Trigger silent alarm when used
+                  </p>
+                </div>
+                <Switch
+                  id="duressAlarm"
+                  checked={settings.duressAlarm}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, duressAlarm: checked })
+                  }
+                />
               </div>
-              <p className="text-xs text-neutral-500">
-                Trigger silent alarm when this method is used
-              </p>
             </div>
           </div>
+        </div>
 
-          {/* Buttons */}
-          <div className="flex gap-2 pt-2">
-            <Button
-              onClick={onCancel}
-              variant="outline"
-              className="flex-1"
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={loading}
-              className="flex-1 bg-neutral-900 hover:bg-neutral-800"
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              {loading ? "Saving..." : "Save Settings"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        <DialogFooter>
+          <Button onClick={onCancel} variant="outline" disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={loading}>
+            <Settings className="mr-2 h-4 w-4" />
+            {loading ? "Saving..." : "Save Settings"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
