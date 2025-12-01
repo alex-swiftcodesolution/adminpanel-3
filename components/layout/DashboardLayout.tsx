@@ -54,7 +54,7 @@ export default function DashboardLayout({
       <Sidebar deviceId={deviceId} />
 
       {/* Main content area */}
-      <main className="flex-1 lg:ml-0 relative">
+      <main className="flex-1 lg:ml-0 relative sm:pt-0 pt-15">
         {/* Polling indicator - top right */}
         <div className="fixed top-4 right-4 z-40">
           <div
