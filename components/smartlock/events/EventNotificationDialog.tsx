@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { CombinedRecordItem } from "@/lib/tuya/tuya-api-wrapper";
-import Image from "next/image";
 import { X, User, Clock, AlertTriangle, Unlock } from "lucide-react";
+import Image from "next/image";
 
 interface EventNotificationDialogProps {
   event: CombinedRecordItem | null;
@@ -22,14 +22,20 @@ export default function EventNotificationDialog({
 
   useEffect(() => {
     if (event) {
-      setIsVisible(true);
+      // Use requestAnimationFrame to defer setState and avoid synchronous state update in effect
+      const frameId = requestAnimationFrame(() => {
+        setIsVisible(true);
+      });
 
       const timeout = setTimeout(() => {
         setIsVisible(false);
         setTimeout(onDismiss, 300);
       }, autoHideAfter);
 
-      return () => clearTimeout(timeout);
+      return () => {
+        cancelAnimationFrame(frameId);
+        clearTimeout(timeout);
+      };
     } else {
       setIsVisible(false);
     }
@@ -40,33 +46,40 @@ export default function EventNotificationDialog({
   const eventTime = new Date(event.gmt_create);
   const firstDp = event.dps[0];
   const dpCode = firstDp ? Object.keys(firstDp)[0] : "";
-  const dpValue = firstDp ? Object.values(firstDp)[0] : "";
 
-  let eventTitle = "🔔 New Event";
-  let eventIcon = "🔔";
+  let eventTitle = "New Event";
+  let eventIcon = "bell";
   let eventColor = "blue";
 
   if (dpCode === "doorbell") {
     eventTitle = "Someone's at the Door!";
-    eventIcon = "🔔";
+    eventIcon = "bell";
     eventColor = "blue";
   } else if (dpCode.includes("unlock")) {
     eventTitle = "Door Unlocked";
-    eventIcon = "🔓";
+    eventIcon = "unlock";
     eventColor = "green";
   } else if (dpCode === "hijack") {
-    eventTitle = "⚠️ Duress Alarm!";
-    eventIcon = "🚨";
+    eventTitle = "Duress Alarm!";
+    eventIcon = "alert";
     eventColor = "red";
   } else if (dpCode === "alarm_lock") {
-    eventTitle = "🚨 Lock Alarm!";
-    eventIcon = "⚠️";
+    eventTitle = "Lock Alarm!";
+    eventIcon = "warning";
     eventColor = "orange";
   }
 
-  const mediaUrl =
-    event.media_info_list?.[0]?.file_url ||
-    event.media_info_list?.[0]?.media_url;
+  // Extract first media with file_url + file_key (encrypted image)
+  const mediaItem = event.media_info_list?.[0];
+  const fileUrl = mediaItem?.file_url;
+  const fileKey = mediaItem?.file_key;
+  const hasEncryptedImage = !!(fileUrl && fileKey);
+  const hasVideo = !!mediaItem?.media_url;
+
+  const proxyImageUrl =
+    hasEncryptedImage && fileUrl && fileKey
+      ? `/api/proxy/image?url=${encodeURIComponent(fileUrl)}&key=${fileKey}`
+      : null;
 
   return (
     <>
@@ -99,7 +112,15 @@ export default function EventNotificationDialog({
           >
             <div className="flex items-center justify-between text-white">
               <h2 className="text-2xl font-bold flex items-center gap-2">
-                <span className="text-3xl">{eventIcon}</span>
+                <span className="text-3xl">
+                  {eventIcon === "bell"
+                    ? "bell"
+                    : eventIcon === "unlock"
+                    ? "unlock"
+                    : eventIcon === "alert"
+                    ? "alert"
+                    : "warning"}
+                </span>
                 {eventTitle}
               </h2>
               <button
@@ -113,22 +134,29 @@ export default function EventNotificationDialog({
 
           {/* Content */}
           <div className="p-6 space-y-4">
-            {/* Media */}
-            {mediaUrl && (
+            {/* Media - Encrypted Image or Video */}
+            {(proxyImageUrl || hasVideo) && (
               <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted">
-                <Image
-                  src={mediaUrl}
-                  alt="Event snapshot"
-                  fill
-                  className="object-cover"
-                  unoptimized
-                />
+                {proxyImageUrl ? (
+                  <Image
+                    width={500}
+                    height={500}
+                    src={proxyImageUrl}
+                    alt="Event capture"
+                    className="w-full h-full object-cover"
+                  />
+                ) : hasVideo && mediaItem?.media_url ? (
+                  <video
+                    src={mediaItem.media_url}
+                    controls
+                    className="w-full h-full object-cover"
+                  />
+                ) : null}
               </div>
             )}
 
             {/* Event Details */}
             <div className="space-y-3">
-              {/* User Info */}
               {event.user_name && (
                 <div className="flex items-center gap-3">
                   <User className="w-5 h-5 text-muted-foreground" />
@@ -139,7 +167,6 @@ export default function EventNotificationDialog({
                 </div>
               )}
 
-              {/* Unlock Method */}
               {event.unlock_name && (
                 <div className="flex items-center gap-3">
                   <Unlock className="w-5 h-5 text-muted-foreground" />
@@ -150,7 +177,6 @@ export default function EventNotificationDialog({
                 </div>
               )}
 
-              {/* Time */}
               <div className="flex items-center gap-3">
                 <Clock className="w-5 h-5 text-muted-foreground" />
                 <div>
@@ -159,7 +185,6 @@ export default function EventNotificationDialog({
                 </div>
               </div>
 
-              {/* Event Type */}
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-muted-foreground" />
                 <div>
@@ -170,7 +195,6 @@ export default function EventNotificationDialog({
                 </div>
               </div>
 
-              {/* Union Unlock Info */}
               {event.union_unlock_info &&
                 event.union_unlock_info.length > 0 && (
                   <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">

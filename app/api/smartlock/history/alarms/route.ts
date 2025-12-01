@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const codes = searchParams.get("codes");
     const pageNo = searchParams.get("pageNo");
     const pageSize = searchParams.get("pageSize");
-    const showMediaInfo = searchParams.get("showMediaInfo");
+    // const showMediaInfo = searchParams.get("showMediaInfo");
 
     if (!deviceId) {
       return NextResponse.json(
@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
       page_no: pageNo ? parseInt(pageNo) : 1,
       page_size: pageSize ? parseInt(pageSize) : 20,
       codes: codes || "alarm_lock,hijack,doorbell",
-      show_media_info: showMediaInfo !== "false",
+      // show_media_info: showMediaInfo !== "false",
+      show_media_info: true,
     };
 
     console.log("🚨 Fetching alarm logs with params:", params);

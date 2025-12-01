@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
+        protocol: "http",
+        hostname: "localhost",
+        port: "3000",
+      },
+      {
         protocol: "https",
         hostname: "*.s3.eu-central-1.amazonaws.com",
       },
@@ -16,6 +21,7 @@ const nextConfig: NextConfig = {
         hostname: "ty-eu-bizlock.s3.eu-central-1.amazonaws.com",
       },
     ],
+    unoptimized: true,
   },
 };
 

@@ -1,5 +1,3 @@
-// components/smartlock/media/MediaAlbums.tsx
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -9,13 +7,12 @@ import {
   Image as ImageIcon,
   Video,
   Clock,
-  Eye,
-  AlertCircle,
   RefreshCw,
   X,
   Filter,
   Camera,
 } from "lucide-react";
+import Image from "next/image";
 
 interface MediaAlbumsProps {
   deviceId: string;
@@ -26,7 +23,6 @@ export default function MediaAlbums({ deviceId }: MediaAlbumsProps) {
   const [loading, setLoading] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<AlbumItem | null>(null);
   const [viewCount, setViewCount] = useState(0);
-  const [unsupported, setUnsupported] = useState(false);
   const [filterType, setFilterType] = useState<number | "all">("all");
 
   useEffect(() => {
@@ -35,25 +31,15 @@ export default function MediaAlbums({ deviceId }: MediaAlbumsProps) {
   }, [deviceId]);
 
   const fetchAlbums = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      const response = await fetch(
+      const res = await fetch(
         `/api/smartlock/media/albums?deviceId=${deviceId}`
       );
-      const data = await response.json();
-
-      if (data.unsupported) {
-        setUnsupported(true);
-        setAlbumsData(null);
-      } else if (data.success && data.data) {
-        setAlbumsData(data.data);
-        setUnsupported(false);
-      } else {
-        setAlbumsData(null);
-      }
-    } catch (error) {
-      console.error("Error fetching albums:", error);
+      const data = await res.json();
+      setAlbumsData(data.success ? data.data : null);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -61,235 +47,161 @@ export default function MediaAlbums({ deviceId }: MediaAlbumsProps) {
 
   const fetchViewCount = async () => {
     try {
-      const response = await fetch(
+      const res = await fetch(
         `/api/smartlock/media/view-count?deviceId=${deviceId}`
       );
-      const data = await response.json();
-
-      if (data.success || data.data) {
-        setViewCount(data.data?.view_times || 0);
-      }
-    } catch (error) {
-      // Silently fail - view count is optional
-    }
+      const data = await res.json();
+      setViewCount(data.data?.view_times || 0);
+    } catch {}
   };
 
   const handleMediaClick = async (item: AlbumItem) => {
     setSelectedMedia(item);
-
-    // Increment view count
     try {
       await fetch("/api/smartlock/media/view-count", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId }),
+        headers: { "Content-Type": "application/json" },
       });
       fetchViewCount();
-    } catch (error) {
-      // Silently fail
-    }
+    } catch {}
   };
 
-  const formatDate = (timestamp: number) => {
-    // API returns seconds
-    return new Date(timestamp * 1000).toLocaleString();
-  };
+  const formatDate = (ts: number) => new Date(ts * 1000).toLocaleString();
+  const getEventName = (t: number) => MEDIA_EVENT_TYPES[t] || `Event ${t}`;
 
-  const getEventTypeName = (type: number): string => {
-    return MEDIA_EVENT_TYPES[type] || `Event ${type}`;
-  };
+  const filtered =
+    albumsData?.album_list?.filter(
+      (i) => filterType === "all" || i.event_type === filterType
+    ) || [];
 
-  // Filter albums by event type
-  const filteredAlbums =
-    albumsData?.album_list?.filter((item) => {
-      if (filterType === "all") return true;
-      return item.event_type === filterType;
-    }) || [];
-
-  if (loading) {
+  if (loading)
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Media Albums</h2>
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-        </div>
+      <div className="bg-white rounded-lg shadow-sm border p-6 py-16 text-center">
+        <div className="animate-spin h-10 w-10 border-b-2 border-purple-600 mx-auto" />
       </div>
     );
-  }
-
-  if (unsupported) {
+  if (!albumsData?.album_list?.length) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Media Albums</h2>
-        <div className="text-center py-12 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
-          <AlertCircle className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
-          <p className="text-yellow-800 font-semibold mb-2 text-lg">
-            Media Albums Not Available
-          </p>
-          <p className="text-yellow-700 text-sm max-w-md mx-auto">
-            This feature requires a cloud storage subscription or a
-            camera-enabled smart lock. Your current device or API permissions
-            don&apos;t support this feature.
-          </p>
-          {albumsData?.order_code && (
-            <p className="text-yellow-600 text-xs mt-3">
-              Current plan: {albumsData.order_code}
-            </p>
-          )}
-        </div>
+      <div className="bg-white rounded-lg shadow-sm border p-6 text-center py-16 text-gray-500">
+        <Camera className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+        <p className="font-medium text-lg">No media yet</p>
+        <p className="text-sm mt-1">
+          Photos and videos will appear here when captured
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold text-gray-900">Media Albums</h2>
-          {albumsData?.album_list && (
-            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-sm rounded-full">
-              {albumsData.album_list.length} items
-            </span>
-          )}
+          <h2 className="text-2xl font-bold">Media Albums</h2>
+          <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
+            {albumsData.album_list.length} items
+          </span>
         </div>
-
-        <div className="flex items-center gap-2">
-          {viewCount > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm">
-              <Eye className="w-4 h-4" />
-              <span>{viewCount} views</span>
-            </div>
-          )}
-          <button
-            onClick={fetchAlbums}
-            disabled={loading}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw
-              className={`w-5 h-5 text-gray-600 ${
-                loading ? "animate-spin" : ""
-              }`}
-            />
-          </button>
-        </div>
+        <button
+          onClick={fetchAlbums}
+          className="p-2 hover:bg-gray-100 rounded-lg"
+        >
+          <RefreshCw className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* Cloud Storage Info */}
-      {albumsData?.order_code && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          <strong>Cloud Storage:</strong>{" "}
-          {albumsData.order_code.replace(/_/g, " ")}
+      {albumsData.order_code && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+          Plan: {albumsData.order_code.replace(/_/g, " ")}
         </div>
       )}
 
-      {/* Event Type Filter */}
-      {albumsData?.event_types && albumsData.event_types.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="w-4 h-4 text-gray-500" />
+      {albumsData.event_types?.length > 0 && (
+        <div className="mb-6 flex items-center gap-2 flex-wrap">
+          <Filter className="w-4 h-4 text-gray-500" />
+          <button
+            onClick={() => setFilterType("all")}
+            className={`px-3 py-1 rounded-full text-sm ${
+              filterType === "all" ? "bg-purple-600 text-white" : "bg-gray-100"
+            }`}
+          >
+            All
+          </button>
+          {albumsData.event_types.map((t) => (
             <button
-              onClick={() => setFilterType("all")}
+              key={t}
+              onClick={() => setFilterType(t)}
               className={`px-3 py-1 rounded-full text-sm ${
-                filterType === "all"
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                filterType === t ? "bg-purple-600 text-white" : "bg-gray-100"
               }`}
             >
-              All
+              {getEventName(t)}
             </button>
-            {albumsData.event_types.map((type) => (
-              <button
-                key={type}
-                onClick={() => setFilterType(type)}
-                className={`px-3 py-1 rounded-full text-sm ${
-                  filterType === type
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                {getEventTypeName(type)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Albums Grid */}
-      {!albumsData?.album_list || filteredAlbums.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <Camera className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-          <p className="text-gray-500 font-medium">No media found</p>
-          <p className="text-gray-400 text-sm mt-1">
-            {filterType !== "all"
-              ? "Try selecting a different filter"
-              : "Media will appear here when captured"}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredAlbums.map((item, idx) => (
-            <div
-              key={`${item.upload_time}-${idx}`}
-              onClick={() => handleMediaClick(item)}
-              className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group bg-gray-100"
-            >
-              {item.file_url ? (
-                <img
-                  src={item.file_url}
-                  alt={`Media ${idx + 1}`}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <ImageIcon className="w-8 h-8 text-gray-400" />
-                </div>
-              )}
-
-              {/* Overlay */}
-              <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              {/* Event Type Badge */}
-              <div className="absolute top-2 left-2">
-                <span className="px-2 py-0.5 bg-black/70 text-white text-xs rounded">
-                  {getEventTypeName(item.event_type)}
-                </span>
-              </div>
-
-              {/* Video Indicator */}
-              {item.media_url && (
-                <div className="absolute top-2 right-2">
-                  <Video className="w-5 h-5 text-white drop-shadow-lg" />
-                </div>
-              )}
-
-              {/* Time */}
-              <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="flex items-center gap-1 text-white text-xs">
-                  <Clock className="w-3 h-3" />
-                  <span className="truncate">
-                    {formatDate(item.upload_time)}
-                  </span>
-                </div>
-              </div>
-            </div>
           ))}
         </div>
       )}
 
-      {/* Media Viewer Modal */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {filtered.map((item, i) => {
+          const thumbUrl =
+            item.file_url && item.file_key
+              ? `/api/proxy/image?url=${encodeURIComponent(
+                  item.file_url
+                )}&key=${item.file_key}`
+              : null;
+
+          return (
+            <button
+              key={i}
+              onClick={() => handleMediaClick(item)}
+              className="relative aspect-square rounded-lg overflow-hidden bg-gray-100 group cursor-pointer"
+            >
+              {thumbUrl ? (
+                <Image
+                  width={300}
+                  height={300}
+                  src={thumbUrl}
+                  alt="Thumb"
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  {item.media_url ? (
+                    <Video className="w-10 h-10 text-gray-400" />
+                  ) : (
+                    <ImageIcon className="w-10 h-10 text-gray-400" />
+                  )}
+                </div>
+              )}
+              <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute top-2 left-2">
+                <span className="px-2 py-0.5 bg-black/70 text-white text-xs rounded">
+                  {getEventName(item.event_type)}
+                </span>
+              </div>
+              {item.media_url && (
+                <Video className="absolute top-2 right-2 w-6 h-6 text-white drop-shadow-lg" />
+              )}
+              <div className="absolute bottom-2 left-2 right-2 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatDate(item.upload_time)}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Full View Modal */}
       {selectedMedia && (
         <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50"
+          className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50"
           onClick={() => setSelectedMedia(null)}
         >
           <button
             onClick={() => setSelectedMedia(null)}
-            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white"
+            className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white"
           >
             <X className="w-6 h-6" />
           </button>
@@ -298,62 +210,50 @@ export default function MediaAlbums({ deviceId }: MediaAlbumsProps) {
             className="max-w-4xl w-full"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Event Info */}
-            <div className="mb-4 text-center text-white">
-              <span className="px-3 py-1 bg-white/20 rounded-full text-sm">
-                {getEventTypeName(selectedMedia.event_type)}
+            <div className="text-center text-white mb-4">
+              <span className="px-4 py-1 bg-white/20 rounded-full text-sm">
+                {getEventName(selectedMedia.event_type)}
               </span>
               <p className="mt-2 text-gray-300 text-sm">
                 {formatDate(selectedMedia.upload_time)}
               </p>
             </div>
 
-            {/* Media Content */}
             {selectedMedia.media_url ? (
               <video
                 src={selectedMedia.media_url}
-                poster={selectedMedia.file_url}
                 controls
                 autoPlay
-                className="w-full h-auto rounded-lg max-h-[70vh]"
+                className="w-full rounded-lg max-h-[75vh]"
               />
-            ) : selectedMedia.file_url ? (
-              <img
-                src={selectedMedia.file_url}
-                alt="Selected media"
-                className="w-full h-auto rounded-lg max-h-[70vh] object-contain"
+            ) : selectedMedia.file_url && selectedMedia.file_key ? (
+              <Image
+                width={500}
+                height={500}
+                src={`/api/proxy/image?url=${encodeURIComponent(
+                  selectedMedia.file_url
+                )}&key=${selectedMedia.file_key}`}
+                alt="Full size"
+                className="w-full rounded-lg max-h-[75vh] object-contain bg-black"
               />
-            ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-800 rounded-lg">
-                <p className="text-gray-400">Media not available</p>
-              </div>
-            )}
+            ) : null}
 
-            {/* Actions */}
-            <div className="mt-4 flex items-center justify-center gap-3">
-              {selectedMedia.file_url && (
+            <div className="mt-4 flex justify-center gap-3">
+              {selectedMedia.file_url && selectedMedia.file_key && (
                 <a
-                  href={selectedMedia.file_url}
+                  href={`/api/proxy/image?url=${encodeURIComponent(
+                    selectedMedia.file_url
+                  )}&key=${selectedMedia.file_key}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                  className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                 >
-                  Open Image
-                </a>
-              )}
-              {selectedMedia.media_url && (
-                <a
-                  href={selectedMedia.media_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  Open Video
+                  Open Full Size
                 </a>
               )}
               <button
                 onClick={() => setSelectedMedia(null)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                className="px-5 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
               >
                 Close
               </button>

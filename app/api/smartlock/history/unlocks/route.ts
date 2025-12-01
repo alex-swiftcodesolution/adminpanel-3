@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const endTime = searchParams.get("endTime");
     const pageNo = searchParams.get("pageNo");
     const pageSize = searchParams.get("pageSize");
-    const showMediaInfo = searchParams.get("showMediaInfo");
+    // const showMediaInfo = searchParams.get("showMediaInfo");
 
     if (!deviceId) {
       return NextResponse.json(
@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
       page_size: pageSize ? parseInt(pageSize) : 20,
       start_time: startTime ? parseInt(startTime) : thirtyDaysAgo,
       end_time: endTime ? parseInt(endTime) : now,
-      show_media_info: showMediaInfo !== "false",
+      // show_media_info: showMediaInfo !== "false",
+      show_media_info: true,
     };
 
     console.log("📜 Fetching unlock logs with params:", params);
