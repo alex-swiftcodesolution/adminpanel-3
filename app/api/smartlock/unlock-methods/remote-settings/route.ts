@@ -63,8 +63,10 @@ export async function POST(request: NextRequest) {
     const result = await TuyaSmartLockAPI.DoorControl.configureRemoteUnlock(
       deviceId,
       {
-        unlock_type,
-        is_enabled,
+        remote_unlock_type: unlock_type as
+          | "remoteUnlockWithoutPwd"
+          | "remoteUnlockWithPwd",
+        open: is_enabled,
       }
     );
 
