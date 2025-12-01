@@ -6,7 +6,7 @@ import { TuyaSmartLockAPI } from "@/lib/tuya/tuya-api-wrapper";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> } // ← Promise now
 ) {
   try {
     const { deviceId, role } = await request.json();
@@ -18,9 +18,11 @@ export async function PUT(
       );
     }
 
+    const { userId } = await params;
+
     const result = await TuyaSmartLockAPI.User.updateUserRole(
       deviceId,
-      params.userId,
+      userId, // ← now safe to use
       role
     );
 
