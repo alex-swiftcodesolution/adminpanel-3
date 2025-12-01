@@ -58,7 +58,7 @@ export default function DynamicPassword({ deviceId }: DynamicPasswordProps) {
   };
 
   return (
-    <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-6">
+    <div className="bg-linear-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-6">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">
         Dynamic Password (5 min validity)
       </h3>
