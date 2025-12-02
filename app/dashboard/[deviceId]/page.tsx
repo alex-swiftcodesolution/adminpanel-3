@@ -18,6 +18,13 @@ import {
   BatteryLow,
   RefreshCw,
   AlertCircle,
+  Clock,
+  CreditCard,
+  Smartphone,
+  Eye,
+  KeyRound,
+  Bell,
+  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -32,14 +39,48 @@ interface DashboardOverviewProps {
   params: Promise<{ deviceId: string }>;
 }
 
-interface DeviceInfo {
-  id: string;
-  name: string;
-  online: boolean;
-  status: Array<{ code: string; value: any }>;
-  product_name: string;
-  category: string;
+interface ActivityItem {
+  type: "unlock" | "alarm";
+  time: number;
+  user_name?: string;
+  nick_name?: string;
+  unlock_name?: string;
+  unlock_code?: string;
+  alarm_code?: string;
+  alarm_message?: string;
+  severity?: "high" | "medium" | "low";
 }
+
+// Unlock type mappings
+const UNLOCK_TYPE_MAP: Record<
+  string,
+  { name: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  unlock_fingerprint: { name: "Fingerprint", icon: Fingerprint },
+  unlock_password: { name: "Password", icon: Key },
+  unlock_temporary: { name: "Temp Password", icon: Clock },
+  unlock_dynamic: { name: "Dynamic Password", icon: KeyRound },
+  unlock_card: { name: "Card", icon: CreditCard },
+  unlock_face: { name: "Face Recognition", icon: Eye },
+  unlock_key: { name: "Mechanical Key", icon: Key },
+  unlock_app: { name: "App Remote", icon: Smartphone },
+  unlock_identity_card: { name: "Identity Card", icon: CreditCard },
+  unlock_emergency: { name: "Emergency", icon: AlertCircle },
+};
+
+// Alarm type mappings
+const ALARM_TYPE_MAP: Record<
+  string,
+  {
+    name: string;
+    severity: "high" | "medium" | "low";
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  hijack: { name: "Duress Alarm", severity: "high", icon: ShieldAlert },
+  alarm_lock: { name: "Lock Alarm", severity: "medium", icon: AlertTriangle },
+  doorbell: { name: "Doorbell", severity: "low", icon: Bell },
+};
 
 const container = {
   hidden: { opacity: 0 },
@@ -71,7 +112,7 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
 
   useEffect(() => {
     if (deviceId && deviceId !== "undefined") {
@@ -98,10 +139,10 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
           r.json()
         ),
         fetch(
-          `/api/smartlock/history/unlocks?deviceId=${deviceId}&pageSize=5`
+          `/api/smartlock/history/unlocks?deviceId=${deviceId}&pageNo=1&pageSize=10`
         ).then((r) => r.json()),
         fetch(
-          `/api/smartlock/history/alarms?deviceId=${deviceId}&pageSize=5`
+          `/api/smartlock/history/alarms?deviceId=${deviceId}&pageNo=1&pageSize=10&codes=alarm_lock,hijack,doorbell`
         ).then((r) => r.json()),
         fetch(`/api/smartlock/device/info?deviceId=${deviceId}`).then((r) =>
           r.json()
@@ -117,6 +158,7 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
         deviceRes,
       ] = results;
 
+      // Extract data with proper fallbacks
       const passwords =
         passwordsRes.status === "fulfilled" && passwordsRes.value?.data
           ? passwordsRes.value.data
@@ -129,18 +171,34 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
         methodsRes.status === "fulfilled" && methodsRes.value?.data
           ? methodsRes.value.data
           : [];
-      const unlocks =
-        unlocksRes.status === "fulfilled" && unlocksRes.value?.data
-          ? unlocksRes.value.data
-          : [];
-      const alarms =
-        alarmsRes.status === "fulfilled" && alarmsRes.value?.data
-          ? alarmsRes.value.data
-          : [];
       const device =
         deviceRes.status === "fulfilled" && deviceRes.value?.data
           ? deviceRes.value.data
           : null;
+
+      // Extract unlocks - API returns { data: { logs: [...], total, ... } }
+      const unlocksData =
+        unlocksRes.status === "fulfilled" && unlocksRes.value?.success
+          ? unlocksRes.value.data
+          : null;
+      const unlocks = unlocksData?.logs || [];
+      const totalUnlocks = unlocksData?.total || 0;
+
+      // Extract alarms - API returns { data: { records: [...], total, ... } }
+      const alarmsData =
+        alarmsRes.status === "fulfilled" && alarmsRes.value?.success
+          ? alarmsRes.value.data
+          : null;
+      const alarms = alarmsData?.records || [];
+      const totalAlarms = alarmsData?.total || 0;
+
+      // Debug logging
+      console.log("Unlocks response:", unlocksRes);
+      console.log("Unlocks data:", unlocksData);
+      console.log("Unlocks array:", unlocks);
+      console.log("Alarms response:", alarmsRes);
+      console.log("Alarms data:", alarmsData);
+      console.log("Alarms array:", alarms);
 
       const batteryStatus = device?.status?.find(
         (s: any) => s.code === "residual_electricity"
@@ -151,8 +209,8 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
         passwords: Array.isArray(passwords) ? passwords.length : 0,
         users: Array.isArray(users) ? users.length : 0,
         unlockMethods: Array.isArray(methods) ? methods.length : 0,
-        recentUnlocks: Array.isArray(unlocks) ? unlocks.length : 0,
-        recentAlarms: Array.isArray(alarms) ? alarms.length : 0,
+        recentUnlocks: totalUnlocks,
+        recentAlarms: totalAlarms,
         deviceOnline: device?.online || false,
         batteryLevel: batteryLevel,
         deviceName: device?.name || device?.product_name || "Smart Lock",
@@ -160,38 +218,71 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
 
       setStats(newStats);
 
-      const activity: any[] = [];
+      // Build activity list
+      const activity: ActivityItem[] = [];
 
+      // Process unlock records - matching UnlockHistoryList structure
       if (Array.isArray(unlocks) && unlocks.length > 0) {
-        unlocks.forEach((unlock: any) => {
+        unlocks.forEach((record: any) => {
+          // Get unlock time - handle different timestamp formats
+          let time = 0;
+          if (record.update_time) {
+            // If timestamp is in milliseconds (> 10 digits), convert to seconds
+            time =
+              record.update_time > 9999999999
+                ? Math.floor(record.update_time / 1000)
+                : record.update_time;
+          }
+
           activity.push({
             type: "unlock",
-            time: unlock.open_time
-              ? unlock.open_time
-              : unlock.update_time
-              ? Math.floor(unlock.update_time / 1000)
-              : unlock.time || 0,
-            user_name: unlock.nick_name || unlock.user_name || "Unknown",
-            unlock_name: unlock.unlock_name || "App Unlock",
+            time: time,
+            user_name: record.nick_name || record.user_name || "Unknown User",
+            unlock_name: record.unlock_name || "Unknown Method",
+            unlock_code: record.status?.code || "unlock_app",
           });
         });
       }
 
+      // Process alarm records - matching AlarmHistoryList structure
       if (Array.isArray(alarms) && alarms.length > 0) {
-        alarms.forEach((alarm: any) => {
+        alarms.forEach((record: any) => {
+          // Get alarm time - handle different timestamp formats
+          let time = 0;
+          if (record.update_time) {
+            time =
+              record.update_time > 9999999999
+                ? Math.floor(record.update_time / 1000)
+                : record.update_time;
+          }
+
+          // Handle status which can be array or object
+          const statusItem = Array.isArray(record.status)
+            ? record.status[0]
+            : record.status;
+
+          const alarmCode = statusItem?.code || "doorbell";
+          const alarmInfo = ALARM_TYPE_MAP[alarmCode] || {
+            name: "Alert",
+            severity: "medium" as const,
+          };
+
           activity.push({
             type: "alarm",
-            time: Math.floor(alarm.update_time / 1000),
-            nick_name: alarm.nick_name || "System",
-            alarm_message: "Doorbell pressed",
-            status: alarm.status,
+            time: time,
+            nick_name: record.nick_name || "System",
+            alarm_code: alarmCode,
+            alarm_message: statusItem?.value || "Alert triggered",
+            severity: alarmInfo.severity,
           });
         });
       }
 
+      // Sort by time (newest first)
       activity.sort((a, b) => (b.time || 0) - (a.time || 0));
-      setRecentActivity(activity.slice(0, 10));
+      setRecentActivity(activity.slice(0, 5));
     } catch (error: any) {
+      console.error("Dashboard fetch error:", error);
       setError(error.message || "Failed to load dashboard data");
     } finally {
       setLoading(false);
@@ -219,6 +310,54 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
     if (level >= 80) return <BatteryFull className="h-4 w-4" />;
     if (level >= 40) return <BatteryMedium className="h-4 w-4" />;
     return <BatteryLow className="h-4 w-4" />;
+  };
+
+  const getUnlockInfo = (code: string) => {
+    return UNLOCK_TYPE_MAP[code] || { name: "Unknown", icon: DoorOpen };
+  };
+
+  const getAlarmInfo = (code: string) => {
+    return (
+      ALARM_TYPE_MAP[code] || {
+        name: "Alert",
+        severity: "medium" as const,
+        icon: AlertTriangle,
+      }
+    );
+  };
+
+  const getSeverityStyles = (severity: string) => {
+    switch (severity) {
+      case "high":
+        return {
+          border: "border-destructive/30",
+          bg: "bg-destructive/5",
+          iconBg: "bg-destructive/10 text-destructive",
+          badge: "destructive" as const,
+        };
+      case "medium":
+        return {
+          border: "border-orange-500/30",
+          bg: "bg-orange-500/5",
+          iconBg:
+            "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
+          badge: "default" as const,
+        };
+      case "low":
+        return {
+          border: "border-muted",
+          bg: "bg-muted/30",
+          iconBg: "bg-muted text-muted-foreground",
+          badge: "secondary" as const,
+        };
+      default:
+        return {
+          border: "border-muted",
+          bg: "",
+          iconBg: "bg-muted text-muted-foreground",
+          badge: "outline" as const,
+        };
+    }
   };
 
   if (error && !loading) {
@@ -258,7 +397,7 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-              {stats.deviceName}
+              {loading ? <Skeleton className="h-8 w-48" /> : stats.deviceName}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Monitor and control your smart lock
@@ -321,6 +460,16 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
                 </Card>
               ))}
             </div>
+            <div className="grid lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-2">
+                <CardContent className="p-6">
+                  <Skeleton className="h-6 w-32 mb-4" />
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full mb-3" />
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -357,7 +506,7 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
                   icon: AlertTriangle,
                   href: `/dashboard/${deviceId}/history`,
                 },
-              ].map((stat, index) => (
+              ].map((stat) => (
                 <motion.div key={stat.title} variants={item}>
                   <Link href={stat.href}>
                     <Card className="hover:border-foreground/20 transition-all cursor-pointer group h-full">
@@ -390,7 +539,14 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
                 <Card>
                   <CardHeader className="pb-4">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">Recent Activity</CardTitle>
+                      <div>
+                        <CardTitle className="text-lg">
+                          Recent Activity
+                        </CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {recentActivity.length} events loaded
+                        </p>
+                      </div>
                       <Button variant="ghost" size="sm" asChild>
                         <Link href={`/dashboard/${deviceId}/history`}>
                           View All
@@ -406,49 +562,117 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
                         <p className="text-sm text-muted-foreground">
                           No recent activity
                         </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Unlock and alarm events will appear here
+                        </p>
                       </div>
                     ) : (
-                      <div className="space-y-0 divide-y">
-                        {recentActivity.map((activity, idx) => (
-                          <motion.div
-                            key={idx}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: idx * 0.05 }}
-                            className="flex items-start gap-4 py-4 first:pt-0"
-                          >
-                            <div
-                              className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${
-                                activity.type === "unlock"
-                                  ? "bg-muted"
-                                  : "bg-foreground"
+                      <div className="space-y-3">
+                        {recentActivity.map((activity, idx) => {
+                          const isUnlock = activity.type === "unlock";
+                          const unlockInfo = isUnlock
+                            ? getUnlockInfo(
+                                activity.unlock_code || "unlock_app"
+                              )
+                            : null;
+                          const alarmInfo = !isUnlock
+                            ? getAlarmInfo(activity.alarm_code || "doorbell")
+                            : null;
+                          const severityStyles = !isUnlock
+                            ? getSeverityStyles(
+                                activity.severity ||
+                                  alarmInfo?.severity ||
+                                  "medium"
+                              )
+                            : null;
+
+                          const IconComponent = isUnlock
+                            ? unlockInfo?.icon || DoorOpen
+                            : alarmInfo?.icon || AlertTriangle;
+
+                          return (
+                            <motion.div
+                              key={`${activity.type}-${activity.time}-${idx}`}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: idx * 0.05 }}
+                              className={`p-4 rounded-lg border transition-all hover:border-foreground/20 ${
+                                isUnlock
+                                  ? "border-primary/20 bg-primary/5"
+                                  : `${severityStyles?.border} ${severityStyles?.bg}`
                               }`}
                             >
-                              {activity.type === "unlock" ? (
-                                <DoorOpen className="h-5 w-5 text-foreground" />
-                              ) : (
-                                <AlertTriangle className="h-5 w-5 text-background" />
-                              )}
-                            </div>
+                              <div className="flex items-start gap-4">
+                                {/* Icon */}
+                                <div
+                                  className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${
+                                    isUnlock
+                                      ? "bg-primary/10 text-primary"
+                                      : severityStyles?.iconBg
+                                  }`}
+                                >
+                                  <IconComponent className="h-5 w-5" />
+                                </div>
 
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <p className="text-sm font-medium">
-                                {activity.type === "unlock"
-                                  ? activity.unlock_name
-                                  : activity.alarm_message || "Doorbell"}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {activity.type === "unlock"
-                                  ? activity.user_name
-                                  : activity.nick_name}
-                              </p>
-                            </div>
+                                {/* Content */}
+                                <div className="flex-1 min-w-0 space-y-2">
+                                  {/* Header with badges */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="text-sm font-semibold">
+                                      {isUnlock
+                                        ? activity.unlock_name ||
+                                          unlockInfo?.name
+                                        : alarmInfo?.name}
+                                    </h3>
+                                    <Badge
+                                      variant={
+                                        isUnlock
+                                          ? "secondary"
+                                          : severityStyles?.badge
+                                      }
+                                      className="text-xs"
+                                    >
+                                      {isUnlock ? "Unlock" : "Alert"}
+                                    </Badge>
+                                    {!isUnlock &&
+                                      activity.severity === "high" && (
+                                        <Badge
+                                          variant="destructive"
+                                          className="text-xs"
+                                        >
+                                          HIGH
+                                        </Badge>
+                                      )}
+                                  </div>
 
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {formatDate(activity.time)}
-                            </span>
-                          </motion.div>
-                        ))}
+                                  {/* Details */}
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                                    <span className="flex items-center gap-1">
+                                      <Users className="h-3 w-3" />
+                                      {isUnlock
+                                        ? activity.user_name
+                                        : activity.nick_name}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {formatDate(activity.time)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Type Badge on right */}
+                                <Badge
+                                  variant="outline"
+                                  className="shrink-0 text-xs hidden sm:flex"
+                                >
+                                  {isUnlock
+                                    ? unlockInfo?.name
+                                    : alarmInfo?.name}
+                                </Badge>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
                       </div>
                     )}
                   </CardContent>
@@ -457,8 +681,8 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
 
               {/* Quick Actions */}
               <motion.div variants={item} className="space-y-4">
-                <Card>
-                  <CardHeader className="pb-4">
+                <Card className="gap-0">
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-lg">Quick Actions</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
@@ -511,8 +735,8 @@ export default function DashboardOverview({ params }: DashboardOverviewProps) {
                 </Card>
 
                 {/* System Info */}
-                <Card>
-                  <CardHeader className="pb-4">
+                <Card className="gap-0">
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-lg">System</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">

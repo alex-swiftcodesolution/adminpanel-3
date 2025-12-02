@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   Key,
@@ -76,9 +76,9 @@ export default function Sidebar({ deviceId }: SidebarProps) {
   ];
 
   const SidebarContent = () => (
-    <>
-      {/* Logo/Brand */}
-      <div className="flex items-center gap-3 p-4">
+    <div className="flex flex-col h-full">
+      {/* Logo/Brand - Fixed at top */}
+      <div className="flex items-center gap-3 p-4 shrink-0">
         <motion.div
           whileHover={{ rotate: [0, -10, 10, -10, 0] }}
           transition={{ duration: 0.5 }}
@@ -92,10 +92,10 @@ export default function Sidebar({ deviceId }: SidebarProps) {
         </div>
       </div>
 
-      <Separator />
+      <Separator className="shrink-0" />
 
       {/* Device ID Display */}
-      <div className="p-4">
+      <div className="p-4 shrink-0">
         <div className="p-3 bg-muted rounded-lg">
           <p className="text-xs text-muted-foreground mb-1">Active Device</p>
           <p
@@ -107,8 +107,8 @@ export default function Sidebar({ deviceId }: SidebarProps) {
         </div>
       </div>
 
-      {/* Navigation Menu */}
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
+      {/* Navigation Menu - Scrollable */}
+      <nav className="flex-1 px-3 space-y-1 overflow-y-auto min-h-0">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -131,10 +131,10 @@ export default function Sidebar({ deviceId }: SidebarProps) {
         })}
       </nav>
 
-      <Separator />
+      <Separator className="shrink-0" />
 
-      {/* Footer */}
-      <div className="p-3 space-y-2">
+      {/* Footer - Fixed at bottom */}
+      <div className="p-3 space-y-2 shrink-0">
         <div className="flex items-center justify-between px-3">
           <span className="text-xs text-muted-foreground">Theme</span>
           <ThemeToggle />
@@ -150,20 +150,19 @@ export default function Sidebar({ deviceId }: SidebarProps) {
           </Link>
         </Button>
       </div>
-    </>
+    </div>
   );
 
   return (
     <>
-      {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b h-16 flex items-center justify-between px-4">
+      {/* Mobile Header - Fixed */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b h-14 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-foreground rounded-lg">
-            <Lock className="w-5 h-5 text-background" />
+          <div className="p-1.5 bg-foreground rounded-lg">
+            <Lock className="w-4 h-4 text-background" />
           </div>
           <div>
             <h1 className="font-bold text-sm">Smart Lock</h1>
-            <p className="text-xs text-muted-foreground">Management</p>
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)}>
@@ -172,35 +171,37 @@ export default function Sidebar({ deviceId }: SidebarProps) {
       </div>
 
       {/* Mobile Overlay */}
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="lg:hidden fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="lg:hidden fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+            onClick={() => setIsOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Mobile Sidebar */}
+      {/* Mobile Sidebar - Fixed */}
       <motion.aside
         initial={false}
         animate={{
           x: isOpen ? 0 : "-100%",
         }}
-        transition={{ type: "spring", damping: 20 }}
-        className="lg:hidden fixed top-16 left-0 bottom-0 w-64 bg-card border-r z-40 flex flex-col"
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="lg:hidden fixed top-14 left-0 bottom-0 w-64 bg-card border-r z-40"
       >
         <SidebarContent />
       </motion.aside>
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-64 border-r bg-card flex-col min-h-screen sticky top-0">
+      {/* Desktop Sidebar - Fixed */}
+      <aside className="hidden lg:block fixed top-0 left-0 bottom-0 w-64 border-r bg-card z-30">
         <SidebarContent />
       </aside>
 
-      {/* Spacer for mobile */}
-      <div className="lg:hidden h-16" />
+      {/* Spacer to offset fixed sidebar */}
+      <div className="hidden lg:block w-64 shrink-0" />
     </>
   );
 }

@@ -50,13 +50,17 @@ export default function DashboardLayout({
   }, [deviceId]);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
+      {/* Sidebar - handles its own fixed positioning */}
       <Sidebar deviceId={deviceId} />
 
-      {/* Main content area */}
-      <main className="flex-1 lg:ml-0 relative sm:pt-0 pt-15">
-        {/* Polling indicator - top right */}
-        <div className="fixed top-4 right-4 z-40">
+      {/* Main content area - offset by sidebar width on desktop */}
+      <main className="lg:pl-64 min-h-screen">
+        {/* Mobile header spacer */}
+        <div className="lg:hidden h-14" />
+
+        {/* Polling indicator - fixed top right */}
+        <div className="fixed top-4 right-4 z-40 lg:top-4">
           <div
             className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 border shadow-sm ${
               isPolling
@@ -78,11 +82,11 @@ export default function DashboardLayout({
           event={latestEvent}
           onDismiss={dismissLatest}
           onOpenDoor={handleOpenDoor}
-          autoHideAfter={30000}
+          autoHideAfter={50000}
         />
 
         {/* Page content */}
-        {children}
+        <div className="relative">{children}</div>
       </main>
     </div>
   );
