@@ -18,7 +18,7 @@ export default function DashboardLayout({
   // Poll for events every 10 seconds
   const { latestEvent, dismissLatest, isPolling } = useSmartLockEvents({
     deviceId,
-    pollingInterval: 10000,
+    pollingInterval: 30000,
     enabled: true,
     onNewEvent: (event) => {
       console.log("🔔 New event in dashboard:", event);
